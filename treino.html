@@ -56,6 +56,18 @@
 
   .container{ max-width:640px; margin:0 auto; padding:18px 16px 10px; }
 
+  .stats-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .stat-chip{
+    background: var(--bg-2); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; flex:1; min-width:120px;
+  }
+  .stat-chip .num{
+    font-family:'Space Grotesk',sans-serif; font-size:1.3rem; font-weight:700;
+    color: var(--accent-soft); line-height:1.1;
+  }
+  .stat-chip .num.small{ font-size:0.95rem; }
+  .stat-chip .lbl{ font-size:0.63rem; color:#c9b9b3; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }
+
   .add-workout-btn{
     width:100%; background: var(--accent); color:#fff; border:none;
     padding:13px; border-radius:10px; font-weight:600; font-size:0.9rem;
@@ -108,6 +120,7 @@
   }
   .mini-btn.danger{ color: var(--danger); border-color:#eccfc8; }
   .mini-btn.reset{ color:#2f8a6f; border-color:#cfe7de; }
+  .mini-btn.complete{ background: var(--done); color:#fff; border:none; font-weight:600; }
 
   .empty-state{
     text-align:center; color:#8a7f77; font-size:0.85rem; padding:40px 20px;
@@ -146,6 +159,7 @@
 </div>
 
 <div class="container">
+  <div class="stats-row" id="statsRow"></div>
   <button class="add-workout-btn" onclick="openWorkoutModal()">+ Novo treino</button>
   <div id="workoutList"></div>
 </div>
@@ -235,13 +249,19 @@ let workouts = [
 let editingWorkoutId = null;
 let editingExerciseWorkoutId = null;
 let editingExerciseId = null;
+let completions = []; // {id, workoutId, name, date:'YYYY-MM-DD', timestamp}
 
 function uid(){ return 'id' + Math.random().toString(36).slice(2,9); }
 function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function dateKey(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function startOfDay(d){ const nd = new Date(d); nd.setHours(0,0,0,0); return nd; }
+function startOfWeek(d){ const nd = startOfDay(d); nd.setDate(nd.getDate() - nd.getDay()); return nd; }
+function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
 
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(workouts)); }
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions })); }
   catch(err){ console.error('Não foi possível salvar automaticamente:', err); }
 }
 function loadState(){
@@ -249,8 +269,67 @@ function loadState(){
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return;
     const data = JSON.parse(raw);
-    if(Array.isArray(data)) workouts = data;
+    if(Array.isArray(data)){
+      workouts = data; // formato antigo, sem histórico de conclusões
+    } else {
+      if(data.workouts) workouts = data.workouts;
+      if(data.completions) completions = data.completions;
+    }
   }catch(err){ console.error('Não foi possível carregar o salvamento automático:', err); }
+}
+
+/* ---------------- INDICADORES ---------------- */
+function computeStats(){
+  const now = new Date();
+  const weekStart = startOfWeek(now);
+  const monthStart = startOfMonth(now);
+
+  const weekCount = completions.filter(c => new Date(c.date+'T00:00:00') >= weekStart).length;
+  const monthCount = completions.filter(c => new Date(c.date+'T00:00:00') >= monthStart).length;
+
+  const doneDates = new Set(completions.map(c => c.date));
+  let streak = 0;
+  let cursor = startOfDay(now);
+  if(!doneDates.has(dateKey(cursor))){
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  while(doneDates.has(dateKey(cursor))){
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  let lastLabel = '—';
+  if(completions.length){
+    const sorted = [...completions].sort((a,b) => b.date.localeCompare(a.date));
+    const diffDays = Math.round((startOfDay(now) - new Date(sorted[0].date+'T00:00:00')) / 86400000);
+    if(diffDays === 0) lastLabel = 'Hoje';
+    else if(diffDays === 1) lastLabel = 'Ontem';
+    else lastLabel = `Há ${diffDays} dias`;
+  }
+
+  return { weekCount, monthCount, streak, lastLabel };
+}
+
+function renderStats(){
+  const container = document.getElementById('statsRow');
+  const s = computeStats();
+  container.innerHTML = `
+    <div class="stat-chip"><div class="num">${s.weekCount}</div><div class="lbl">Essa semana</div></div>
+    <div class="stat-chip"><div class="num">${s.monthCount}</div><div class="lbl">Esse mês</div></div>
+    <div class="stat-chip"><div class="num">${s.streak}</div><div class="lbl">Sequência (dias)</div></div>
+    <div class="stat-chip"><div class="num small">${s.lastLabel}</div><div class="lbl">Último treino</div></div>
+  `;
+}
+
+function completeWorkout(id){
+  const w = workouts.find(w => w.id === id);
+  if(!w) return;
+  const now = new Date();
+  completions.push({ id: uid(), workoutId: id, name: w.name, date: dateKey(now), timestamp: now.toISOString() });
+  w.exercises.forEach(e => e.done = false);
+  renderWorkouts();
+  renderStats();
+  saveState();
 }
 
 /* ---------------- RENDER ---------------- */
@@ -307,6 +386,7 @@ function renderWorkouts(){
     const actions = document.createElement('div');
     actions.className = 'workout-actions';
     actions.innerHTML = `
+      <button class="mini-btn complete" onclick="completeWorkout('${w.id}')">✓ Concluir treino</button>
       <button class="mini-btn" onclick="openExerciseModal('${w.id}', null)">+ Exercício</button>
       <button class="mini-btn reset" onclick="resetWorkoutProgress('${w.id}')">Reiniciar progresso</button>
       <button class="mini-btn" onclick="openWorkoutModal('${w.id}')">Renomear treino</button>
@@ -419,6 +499,7 @@ document.getElementById('exerciseModalBg').addEventListener('click', (e)=>{
 /* ---------------- INIT ---------------- */
 loadState();
 renderWorkouts();
+renderStats();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
