@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meu Treino</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#241A1A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #1F1616;
+    --bg-2: #2A1F1F;
+    --line: #3d2c2c;
+    --paper: #FBF7EE;
+    --paper-line: #E7DFCC;
+    --ink: #232323;
+    --ink-soft: #6b6558;
+    --cream-text: #F2EFE6;
+    --accent: #E1543A;
+    --accent-soft: #f0836d;
+    --done: #3FBF9E;
+    --danger: #c8543f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;}
+  body{
+    background: var(--bg);
+    font-family:'Inter',sans-serif;
+    color: var(--cream-text);
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+  }
+  h1,h2,h3,.display{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px 20px 16px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg); z-index:5;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand .dot{
+    width:10px; height:10px; border-radius:50%; background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(225,84,58,0.18);
+  }
+  .brand h1{ font-size:1.25rem; margin:0; }
+  .menu-link{
+    font-size:0.75rem; color:#c9b9b3; text-decoration:none;
+    border:1px solid var(--line); padding:7px 12px; border-radius:8px;
+  }
+  .menu-link:active{ background: var(--bg-2); }
+
+  .container{ max-width:640px; margin:0 auto; padding:18px 16px 10px; }
+
+  .add-workout-btn{
+    width:100%; background: var(--accent); color:#fff; border:none;
+    padding:13px; border-radius:10px; font-weight:600; font-size:0.9rem;
+    cursor:pointer; margin-bottom:18px;
+  }
+  .add-workout-btn:active{ background: var(--accent-soft); }
+
+  .workout-card{
+    background: var(--paper); color: var(--ink); border-radius:14px;
+    margin-bottom:14px; overflow:hidden;
+  }
+  .workout-header{
+    display:flex; align-items:center; gap:10px;
+    padding:16px 16px 12px; cursor:pointer;
+  }
+  .workout-header .info{ flex:1; min-width:0; }
+  .workout-header h2{ font-size:1.05rem; margin:0 0 6px; }
+  .progress-track{ background: var(--paper-line); border-radius:6px; height:7px; overflow:hidden; }
+  .progress-fill{ height:100%; background: var(--done); border-radius:6px; transition: width .2s; }
+  .progress-label{ font-size:0.68rem; color:var(--ink-soft); margin-top:4px; }
+  .chevron{ font-size:0.9rem; color:var(--ink-soft); transition: transform .2s; flex-shrink:0; }
+  .workout-card.open .chevron{ transform: rotate(90deg); }
+
+  .workout-body{ display:none; padding:0 16px 16px; }
+  .workout-card.open .workout-body{ display:block; }
+
+  .exercise-row{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 0; border-top:1px solid var(--paper-line);
+  }
+  .exercise-row input[type=checkbox]{
+    width:20px; height:20px; accent-color: var(--done); flex-shrink:0;
+  }
+  .exercise-row .ex-info{ flex:1; min-width:0; }
+  .exercise-row .ex-name{ font-size:0.9rem; font-weight:500; }
+  .exercise-row.done .ex-name{ text-decoration:line-through; color:#a39a89; }
+  .exercise-row .ex-scheme{ font-size:0.76rem; color:var(--ink-soft); font-family:'JetBrains Mono',monospace; }
+  .exercise-row .ex-actions{ display:flex; gap:4px; flex-shrink:0; }
+  .exercise-row .ex-actions button{
+    background:none; border:none; color:#a39a89; cursor:pointer; font-size:0.95rem; padding:4px;
+  }
+  .exercise-row .ex-actions button:hover{ color: var(--accent); }
+
+  .workout-actions{
+    display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;
+  }
+  .mini-btn{
+    background:#fff; border:1px solid var(--paper-line); color:var(--ink);
+    padding:8px 12px; border-radius:8px; font-size:0.76rem; cursor:pointer;
+  }
+  .mini-btn.danger{ color: var(--danger); border-color:#eccfc8; }
+  .mini-btn.reset{ color:#2f8a6f; border-color:#cfe7de; }
+
+  .empty-state{
+    text-align:center; color:#8a7f77; font-size:0.85rem; padding:40px 20px;
+  }
+
+  /* Modal */
+  .modal-bg{
+    position:fixed; inset:0; background: rgba(20,14,14,0.55);
+    display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .modal-bg.open{ display:flex; }
+  .modal{
+    background: var(--paper); color: var(--ink); border-radius:12px;
+    padding:22px; width:100%; max-width:380px;
+  }
+  .modal h3{ margin:0 0 16px; font-family:'Space Grotesk',sans-serif; font-size:1.1rem; }
+  .field{ margin-bottom:13px; }
+  .field label{ display:block; font-size:0.72rem; color:var(--ink-soft); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; }
+  .field input[type=text]{
+    width:100%; padding:9px 10px; border:1px solid var(--paper-line);
+    border-radius:6px; font-family:'Inter',sans-serif; font-size:0.9rem; background:#fff;
+  }
+  .modal-actions{ display:flex; justify-content:space-between; margin-top:18px; }
+  .btn-save{ background: var(--accent); color:#fff; border:none; padding:9px 16px; border-radius:6px; font-weight:600; cursor:pointer; }
+  .btn-cancel{ background:none; border:1px solid var(--paper-line); color:var(--ink); padding:9px 14px; border-radius:6px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>Meu Treino</h1>
+  </div>
+  <a href="index.html" class="menu-link">← Menu</a>
+</div>
+
+<div class="container">
+  <button class="add-workout-btn" onclick="openWorkoutModal()">+ Novo treino</button>
+  <div id="workoutList"></div>
+</div>
+
+<!-- MODAL: TREINO (dia) -->
+<div class="modal-bg" id="workoutModalBg">
+  <div class="modal">
+    <h3 id="workoutModalTitle">Novo treino</h3>
+    <div class="field">
+      <label>Nome do treino</label>
+      <input type="text" id="workoutName" placeholder="Ex: Segunda - Peito e Tríceps">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeWorkoutModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveWorkoutModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXERCÍCIO -->
+<div class="modal-bg" id="exerciseModalBg">
+  <div class="modal">
+    <h3 id="exerciseModalTitle">Novo exercício</h3>
+    <div class="field">
+      <label>Exercício</label>
+      <input type="text" id="exerciseName" placeholder="Ex: Supino reto com barra">
+    </div>
+    <div class="field">
+      <label>Séries x repetições</label>
+      <input type="text" id="exerciseScheme" placeholder="Ex: 4x6-8">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeExerciseModal()">Cancelar</button>
+      <button class="btn-save" onclick="saveExerciseModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'meu-treino-v1';
+
+let workouts = [
+  {id:'w1', name:'Segunda - Peito e Tríceps', open:true, exercises:[
+    {id:'e1', name:'Supino reto com barra', scheme:'4x6-8', done:false},
+    {id:'e2', name:'Supino inclinado halter', scheme:'4x8-12', done:false},
+    {id:'e3', name:'Flexões de braço fechada', scheme:'4x máx', done:false},
+    {id:'e4', name:'Tríceps testa barra W', scheme:'3x8-12', done:false},
+    {id:'e5', name:'Tríceps corda', scheme:'2x12-15', done:false},
+    {id:'e6', name:'Abdominal supra carga', scheme:'3x máx', done:false},
+  ]},
+  {id:'w2', name:'Terça - Costas e Bíceps', open:false, exercises:[
+    {id:'e7', name:'Remada serrote', scheme:'4x6-8 cada', done:false},
+    {id:'e8', name:'Puxador frente aberto', scheme:'4x8-12', done:false},
+    {id:'e9', name:'Remada aberta máquina', scheme:'4x8-12', done:false},
+    {id:'e10', name:'Pulldown corda', scheme:'3x12-15', done:false},
+    {id:'e11', name:'Rosca martelo sentado no banco inclinado', scheme:'3x8-12', done:false},
+    {id:'e12', name:'Rosca concentrada', scheme:'3x12-15 cada', done:false},
+  ]},
+  {id:'w3', name:'Quarta - Inferiores Completo', open:false, exercises:[
+    {id:'e13', name:'Afundo búlgaro', scheme:'4x6-8 cada', done:false},
+    {id:'e14', name:'Stiff barra', scheme:'4x6-8', done:false},
+    {id:'e15', name:'Leg press 45', scheme:'3x8-12', done:false},
+    {id:'e16', name:'Cadeira extensora', scheme:'3x12-15', done:false},
+    {id:'e17', name:'Cadeira flexora', scheme:'3x12-15', done:false},
+    {id:'e18', name:'Panturrilha máq. em pé', scheme:'3x8-12', done:false},
+    {id:'e19', name:'Panturrilha sentado', scheme:'3x12-15', done:false},
+  ]},
+  {id:'w4', name:'Quinta - Ombro e Abdômen', open:false, exercises:[
+    {id:'e20', name:'Desenvolvimento halter', scheme:'3x6-8', done:false},
+    {id:'e21', name:'Elevação lateral halter', scheme:'3x8-12', done:false},
+    {id:'e22', name:'Elevação lateral polia', scheme:'3x12-15 cada', done:false},
+    {id:'e23', name:'Crucifixo inv. máquina', scheme:'4x12-15', done:false},
+    {id:'e24', name:'Encolhimento halter', scheme:'4x8-12', done:false},
+    {id:'e25', name:'Abdominal canivete', scheme:'3x máx', done:false},
+  ]},
+  {id:'w5', name:'Sexta - Inferiores Completo', open:false, exercises:[
+    {id:'e26', name:'Levantamento terra', scheme:'3x6-8', done:false},
+    {id:'e27', name:'Agachamento hack', scheme:'3x6-8', done:false},
+    {id:'e28', name:'Elevação pélvica máquina', scheme:'3x8-12', done:false},
+    {id:'e29', name:'Mesa flexora', scheme:'3x8-12', done:false},
+    {id:'e30', name:'Cadeira abdutora', scheme:'3x12-15', done:false},
+    {id:'e31', name:'Panturrilha no leg 45', scheme:'3x8-12', done:false},
+    {id:'e32', name:'Extensão lombar no banco romano', scheme:'3x máx', done:false},
+  ]},
+];
+
+let editingWorkoutId = null;
+let editingExerciseWorkoutId = null;
+let editingExerciseId = null;
+
+function uid(){ return 'id' + Math.random().toString(36).slice(2,9); }
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* ---------------- AUTOSAVE ---------------- */
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(workouts)); }
+  catch(err){ console.error('Não foi possível salvar automaticamente:', err); }
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(Array.isArray(data)) workouts = data;
+  }catch(err){ console.error('Não foi possível carregar o salvamento automático:', err); }
+}
+
+/* ---------------- RENDER ---------------- */
+function renderWorkouts(){
+  const container = document.getElementById('workoutList');
+  container.innerHTML = '';
+
+  if(!workouts.length){
+    container.innerHTML = '<div class="empty-state">Nenhum treino cadastrado ainda. Toque em "+ Novo treino" pra começar.</div>';
+    return;
+  }
+
+  workouts.forEach(w=>{
+    const total = w.exercises.length;
+    const done = w.exercises.filter(e=>e.done).length;
+    const pct = total ? Math.round((done/total)*100) : 0;
+
+    const card = document.createElement('div');
+    card.className = 'workout-card' + (w.open ? ' open' : '');
+
+    const header = document.createElement('div');
+    header.className = 'workout-header';
+    header.innerHTML = `
+      <div class="info">
+        <h2>${escapeHtml(w.name)}</h2>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="progress-label">${done}/${total} concluídos</div>
+      </div>
+      <span class="chevron">▸</span>
+    `;
+    header.onclick = () => toggleWorkoutOpen(w.id);
+    card.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'workout-body';
+
+    w.exercises.forEach(ex=>{
+      const row = document.createElement('div');
+      row.className = 'exercise-row' + (ex.done ? ' done' : '');
+      row.innerHTML = `
+        <input type="checkbox" ${ex.done?'checked':''} onchange="toggleExerciseDone('${w.id}','${ex.id}')">
+        <div class="ex-info">
+          <div class="ex-name">${escapeHtml(ex.name)}</div>
+          <div class="ex-scheme">${escapeHtml(ex.scheme)}</div>
+        </div>
+        <div class="ex-actions">
+          <button title="Editar" onclick="openExerciseModal('${w.id}', '${ex.id}')">✎</button>
+          <button title="Excluir" onclick="deleteExercise('${w.id}','${ex.id}')">×</button>
+        </div>
+      `;
+      body.appendChild(row);
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'workout-actions';
+    actions.innerHTML = `
+      <button class="mini-btn" onclick="openExerciseModal('${w.id}', null)">+ Exercício</button>
+      <button class="mini-btn reset" onclick="resetWorkoutProgress('${w.id}')">Reiniciar progresso</button>
+      <button class="mini-btn" onclick="openWorkoutModal('${w.id}')">Renomear treino</button>
+      <button class="mini-btn danger" onclick="deleteWorkout('${w.id}')">Excluir treino</button>
+    `;
+    body.appendChild(actions);
+
+    card.appendChild(body);
+    container.appendChild(card);
+  });
+}
+
+function toggleWorkoutOpen(id){
+  const w = workouts.find(w=>w.id===id);
+  if(w) w.open = !w.open;
+  renderWorkouts();
+}
+
+/* ---------------- WORKOUT MODAL (dia) ---------------- */
+function openWorkoutModal(id){
+  editingWorkoutId = id || null;
+  const w = id ? workouts.find(w=>w.id===id) : null;
+  document.getElementById('workoutModalTitle').textContent = w ? 'Renomear treino' : 'Novo treino';
+  document.getElementById('workoutName').value = w ? w.name : '';
+  document.getElementById('workoutModalBg').classList.add('open');
+}
+function closeWorkoutModal(){
+  document.getElementById('workoutModalBg').classList.remove('open');
+  editingWorkoutId = null;
+}
+function saveWorkoutModal(){
+  const name = document.getElementById('workoutName').value.trim();
+  if(!name){ alert('Dê um nome para o treino.'); return; }
+  if(editingWorkoutId){
+    const w = workouts.find(w=>w.id===editingWorkoutId);
+    w.name = name;
+  } else {
+    workouts.push({id:uid(), name, open:true, exercises:[]});
+  }
+  closeWorkoutModal();
+  renderWorkouts();
+  saveState();
+}
+function deleteWorkout(id){
+  if(!confirm('Excluir este treino e todos os exercícios dele?')) return;
+  workouts = workouts.filter(w=>w.id!==id);
+  renderWorkouts();
+  saveState();
+}
+function resetWorkoutProgress(id){
+  const w = workouts.find(w=>w.id===id);
+  if(w) w.exercises.forEach(e=> e.done = false);
+  renderWorkouts();
+  saveState();
+}
+
+/* ---------------- EXERCISE MODAL ---------------- */
+function openExerciseModal(workoutId, exerciseId){
+  editingExerciseWorkoutId = workoutId;
+  editingExerciseId = exerciseId || null;
+  const w = workouts.find(w=>w.id===workoutId);
+  const ex = exerciseId ? w.exercises.find(e=>e.id===exerciseId) : null;
+  document.getElementById('exerciseModalTitle').textContent = ex ? 'Editar exercício' : 'Novo exercício';
+  document.getElementById('exerciseName').value = ex ? ex.name : '';
+  document.getElementById('exerciseScheme').value = ex ? ex.scheme : '';
+  document.getElementById('exerciseModalBg').classList.add('open');
+}
+function closeExerciseModal(){
+  document.getElementById('exerciseModalBg').classList.remove('open');
+  editingExerciseWorkoutId = null;
+  editingExerciseId = null;
+}
+function saveExerciseModal(){
+  const name = document.getElementById('exerciseName').value.trim();
+  const scheme = document.getElementById('exerciseScheme').value.trim();
+  if(!name){ alert('Dê um nome ao exercício.'); return; }
+  const w = workouts.find(w=>w.id===editingExerciseWorkoutId);
+  if(editingExerciseId){
+    const ex = w.exercises.find(e=>e.id===editingExerciseId);
+    ex.name = name;
+    ex.scheme = scheme;
+  } else {
+    w.exercises.push({id:uid(), name, scheme, done:false});
+  }
+  closeExerciseModal();
+  renderWorkouts();
+  saveState();
+}
+function deleteExercise(workoutId, exerciseId){
+  const w = workouts.find(w=>w.id===workoutId);
+  w.exercises = w.exercises.filter(e=>e.id!==exerciseId);
+  renderWorkouts();
+  saveState();
+}
+function toggleExerciseDone(workoutId, exerciseId){
+  const w = workouts.find(w=>w.id===workoutId);
+  const ex = w.exercises.find(e=>e.id===exerciseId);
+  if(ex) ex.done = !ex.done;
+  renderWorkouts();
+  saveState();
+}
+
+document.getElementById('workoutModalBg').addEventListener('click', (e)=>{
+  if(e.target.id==='workoutModalBg') closeWorkoutModal();
+});
+document.getElementById('exerciseModalBg').addEventListener('click', (e)=>{
+  if(e.target.id==='exerciseModalBg') closeExerciseModal();
+});
+
+/* ---------------- INIT ---------------- */
+loadState();
+renderWorkouts();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
