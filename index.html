@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meu Planejamento de Vida</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#1E2A28">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:#1E2A28 url('background-light.jpg') center/cover no-repeat fixed;
+    position:relative;
+  }
+  body::before{
+    content:'';
+    position:fixed; inset:0;
+    background: rgba(30,42,40,0.42);
+    backdrop-filter: blur(1px);
+  }
+  .menu-card{
+    position:relative;
+    z-index:1;
+    background: rgba(251,247,238,0.96);
+    border-radius:20px;
+    padding:40px 34px 34px;
+    max-width:420px;
+    width:100%;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.45);
+    text-align:center;
+  }
+  .eyebrow{
+    font-size:0.7rem; text-transform:uppercase; letter-spacing:2px;
+    color:#8a8070; margin-bottom:8px; font-weight:600;
+  }
+  h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:1.7rem; margin:0 0 6px; color:#232323; line-height:1.2;
+  }
+  .quote{
+    font-size:0.82rem; color:#8a8070; font-style:italic; margin-bottom:30px;
+  }
+  .menu-options{ display:flex; flex-direction:column; gap:14px; }
+  .menu-btn{
+    display:flex; align-items:center; gap:14px;
+    text-decoration:none; color:#232323;
+    background:#fff; border:1px solid #E7DFCC; border-radius:14px;
+    padding:16px 18px; text-align:left;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .menu-btn:hover{
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -12px rgba(0,0,0,0.25);
+    border-color:#C99A3C;
+  }
+  .menu-btn .icon{
+    width:44px; height:44px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.4rem;
+  }
+  .menu-btn.rotina .icon{ background:#E9F1F6; }
+  .menu-btn.financas .icon{ background:#EAF3ED; }
+  .menu-btn .label{ flex:1; }
+  .menu-btn .title{ font-weight:600; font-size:0.98rem; margin-bottom:2px; }
+  .menu-btn .desc{ font-size:0.76rem; color:#8a8070; line-height:1.3; }
+  .menu-btn .arrow{ color:#C0B9A4; font-size:1.1rem; }
+
+  .footer-hint{
+    margin-top:26px; font-size:0.68rem; color:#a39a89; line-height:1.5;
+  }
+</style>
+</head>
+<body>
+  <div class="menu-card">
+    <div class="eyebrow">Meu Planejamento de Vida</div>
+    <h1>Bem-vindo(a) de volta</h1>
+    <div class="quote">"Pequenos passos também levam longe."</div>
+
+    <div class="menu-options">
+      <a class="menu-btn rotina" href="rotina.html">
+        <span class="icon">🗓️</span>
+        <span class="label">
+          <div class="title">Rotina & Ordens de Serviço</div>
+          <div class="desc">Semana modelo, hoje, metas e ordens de serviço</div>
+        </span>
+        <span class="arrow">→</span>
+      </a>
+
+      <a class="menu-btn financas" href="financas.html">
+        <span class="icon">💰</span>
+        <span class="label">
+          <div class="title">Livro-Caixa</div>
+          <div class="desc">Controle financeiro, cartão, dívidas e patrimônio</div>
+        </span>
+        <span class="arrow">→</span>
+      </a>
+    </div>
+
+    <div class="footer-hint">Escolha um app para abrir ou editar. Seus dados salvam automaticamente neste navegador.</div>
+  </div>
+
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
