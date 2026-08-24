@@ -84,6 +84,11 @@
   .insight .dot{font-size:16px; line-height:1;}
 
   table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  .table-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -4px; padding:0 4px; }
+  .table-lancamentos{ min-width:660px; }
+  .table-lancamentos th:nth-child(1), .table-lancamentos td:nth-child(1){ width:240px; }
+  .table-lancamentos th:nth-child(4), .table-lancamentos td:nth-child(4){ width:130px; }
+  .table-lancamentos th:nth-child(5), .table-lancamentos td:nth-child(5){ width:190px; }
   th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.8px; color:var(--ink-soft); border-bottom:2px solid var(--ink); padding:6px 8px; font-weight:600;}
   td{padding:7px 8px; border-bottom:1px solid var(--rule); vertical-align:middle;}
   tr.total-row td{border-top:2px solid var(--ink); border-bottom:none; font-weight:700; font-family:'IBM Plex Mono';}
@@ -156,7 +161,7 @@ let uid = 1000;
 const newId = () => 'i' + (uid++);
 
 function seedData(){
-  const mk = (nome, valor, status, nota) => ({id:newId(), nome, valor: valor===''?0:valor, status: status||'', nota: nota||''});
+  const mk = (nome, valor, status, nota, data) => ({id:newId(), nome, valor: valor===''?0:valor, status: status||'', nota: nota||'', data: data||''});
   return {
     ui:{ view:'dashboard', month:'2026-09' },
     months:[
@@ -634,13 +639,15 @@ function categoryTable(month, cat, title){
   return `
   <div class="card">
     <div class="section-title"><h3>${title}</h3><button class="btn sm ghost" data-add="${cat}" data-month="${month.id}">+ Adicionar item</button></div>
-    <table>
-      <thead><tr><th>Item</th><th class="num">Valor</th><th>Status</th><th>Anotação</th><th></th></tr></thead>
-      <tbody>
-        ${rows.length? rows.map(r=>rowHtml(month.id,cat,r)).join('') : `<tr><td colspan="5" class="empty">Nenhum item ainda.</td></tr>`}
-        <tr class="total-row"><td>TOTAL</td><td class="num">${BRL(total)}</td><td colspan="3"></td></tr>
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table class="table-lancamentos">
+        <thead><tr><th>Item</th><th class="num">Valor</th><th>Status</th><th>Data</th><th>Anotação</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length? rows.map(r=>rowHtml(month.id,cat,r)).join('') : `<tr><td colspan="6" class="empty">Nenhum item ainda.</td></tr>`}
+          <tr class="total-row"><td>TOTAL</td><td class="num">${BRL(total)}</td><td colspan="4"></td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>`;
 }
 
@@ -655,6 +662,7 @@ function rowHtml(monthId,cat,r){
         <option value="ok" ${r.status==='ok'?'selected':''}>ok</option>
       </select>
     </td>
+    <td><input class="cell" data-field="data" type="date" value="${r.data||''}"></td>
     <td><input class="cell" data-field="nota" value="${escapeHtml(r.nota)}" placeholder="ex: Parcela 3 de 12">${inst?` <span class="badge-close">${inst.current}/${inst.total}</span>`:''}</td>
     <td><button class="icon-btn" data-del="1" title="Remover">✕</button></td>
   </tr>`;
@@ -981,7 +989,7 @@ function bindEvents(){
 
   document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
     const m = monthById(b.dataset.month);
-    m[b.dataset.add].push({id:newId(), nome:'Novo item', valor:0, status:'', nota:''});
+    m[b.dataset.add].push({id:newId(), nome:'Novo item', valor:0, status:'', nota:'', data:''});
     save(); render();
   });
 

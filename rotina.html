@@ -477,14 +477,14 @@
 
         <div>
           <h3 class="today-subtitle">
-            Metas de hoje
-            <button class="reset-link" onclick="resetDailyGoals()">reiniciar</button>
+            Metas do mês
+            <button class="reset-link" onclick="resetMonthlyGoals()">reiniciar</button>
           </h3>
-          <div class="goal-progress-bar"><div class="goal-progress-fill" id="dailyGoalFill"></div></div>
-          <div id="dailyGoalList" class="task-list"></div>
+          <div class="goal-progress-bar"><div class="goal-progress-fill" id="monthlyGoalFill"></div></div>
+          <div id="monthlyGoalList" class="task-list"></div>
           <div class="add-row">
-            <input type="text" id="newDailyGoal" placeholder="Nova meta de hoje" onkeydown="if(event.key==='Enter')addDailyGoal()">
-            <button class="btn-outline" onclick="addDailyGoal()">+</button>
+            <input type="text" id="newMonthlyGoal" placeholder="Nova meta do mês" onkeydown="if(event.key==='Enter')addMonthlyGoal()">
+            <button class="btn-outline" onclick="addMonthlyGoal()">+</button>
           </div>
 
           <h3 class="today-subtitle" style="margin-top:26px;">Caixa de entrada pendente</h3>
@@ -693,7 +693,7 @@ let tasks = [
 
 let orders = [];
 
-let dailyGoals = [
+let monthlyGoals = [
   {id:'g1', name:'Treinar', done:false},
   {id:'g2', name:'Estudar 2h', done:false},
   {id:'g3', name:'Dormir até 22:30', done:false},
@@ -728,7 +728,7 @@ let currentMonth, currentYear;
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
   try{
-    const data = { categories, events, tasks, orders, dailyGoals, closingChecklist, todayChecks };
+    const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }catch(err){
     console.error('Não foi possível salvar automaticamente:', err);
@@ -743,7 +743,7 @@ function loadState(){
     if(data.events) events = data.events;
     if(data.tasks) tasks = data.tasks;
     if(data.orders) orders = data.orders;
-    if(data.dailyGoals) dailyGoals = data.dailyGoals;
+    if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
     if(data.closingChecklist) closingChecklist = data.closingChecklist;
     if(data.todayChecks) todayChecks = data.todayChecks;
     return true;
@@ -1342,49 +1342,49 @@ function renderTodayInbox(){
   });
 }
 
-function renderDailyGoals(){
-  const list = document.getElementById('dailyGoalList');
+function renderMonthlyGoals(){
+  const list = document.getElementById('monthlyGoalList');
   list.innerHTML = '';
-  dailyGoals.forEach(g=>{
+  monthlyGoals.forEach(g=>{
     const row = document.createElement('div');
     row.className = 'task-item light' + (g.done ? ' done' : '');
-    row.innerHTML = `<input type="checkbox" ${g.done?'checked':''} onchange="toggleDailyGoal('${g.id}')">
+    row.innerHTML = `<input type="checkbox" ${g.done?'checked':''} onchange="toggleMonthlyGoal('${g.id}')">
       <span>${escapeHtml(g.name)}</span>
-      <button onclick="removeDailyGoal('${g.id}')">×</button>`;
+      <button onclick="removeMonthlyGoal('${g.id}')">×</button>`;
     list.appendChild(row);
   });
-  const total = dailyGoals.length;
-  const done = dailyGoals.filter(g=>g.done).length;
+  const total = monthlyGoals.length;
+  const done = monthlyGoals.filter(g=>g.done).length;
   const pct = total ? Math.round((done/total)*100) : 0;
-  const fill = document.getElementById('dailyGoalFill');
+  const fill = document.getElementById('monthlyGoalFill');
   if(fill) fill.style.width = pct + '%';
 }
-function addDailyGoal(){
-  const input = document.getElementById('newDailyGoal');
+function addMonthlyGoal(){
+  const input = document.getElementById('newMonthlyGoal');
   const name = input.value.trim();
   if(!name) return;
-  dailyGoals.push({id:uid(), name, done:false});
+  monthlyGoals.push({id:uid(), name, done:false});
   input.value = '';
-  renderDailyGoals();
+  renderMonthlyGoals();
   renderTodayStats();
   saveState();
 }
-function toggleDailyGoal(id){
-  const g = dailyGoals.find(g=>g.id===id);
+function toggleMonthlyGoal(id){
+  const g = monthlyGoals.find(g=>g.id===id);
   if(g) g.done = !g.done;
-  renderDailyGoals();
+  renderMonthlyGoals();
   renderTodayStats();
   saveState();
 }
-function removeDailyGoal(id){
-  dailyGoals = dailyGoals.filter(g=>g.id!==id);
-  renderDailyGoals();
+function removeMonthlyGoal(id){
+  monthlyGoals = monthlyGoals.filter(g=>g.id!==id);
+  renderMonthlyGoals();
   renderTodayStats();
   saveState();
 }
-function resetDailyGoals(){
-  dailyGoals.forEach(g=> g.done = false);
-  renderDailyGoals();
+function resetMonthlyGoals(){
+  monthlyGoals.forEach(g=> g.done = false);
+  renderMonthlyGoals();
   renderTodayStats();
   saveState();
 }
@@ -1417,15 +1417,15 @@ function renderTodayStats(){
   const items = getTodayAgendaItems();
   const doneCount = items.filter(it=>todayChecks[it.key]).length;
   const totalMinutes = items.reduce((sum,it)=> it.end ? sum + (timeToMin(it.end) - timeToMin(it.time)) : sum, 0);
-  const goalsDone = dailyGoals.filter(g=>g.done).length;
-  const goalsTotal = dailyGoals.length;
+  const goalsDone = monthlyGoals.filter(g=>g.done).length;
+  const goalsTotal = monthlyGoals.length;
   const goalsPct = goalsTotal ? Math.round((goalsDone/goalsTotal)*100) : 0;
   const inboxPending = tasks.filter(t=>!t.done).length;
 
   container.innerHTML = `
     <div class="stat-chip"><div class="num">${doneCount}/${items.length}</div><div class="lbl">Feito hoje</div></div>
     <div class="stat-chip"><div class="num">${(totalMinutes/60).toFixed(1)}h</div><div class="lbl">Agendado hoje</div></div>
-    <div class="stat-chip"><div class="num">${goalsPct}%</div><div class="lbl">Metas do dia</div></div>
+    <div class="stat-chip"><div class="num">${goalsPct}%</div><div class="lbl">Metas do mês</div></div>
     <div class="stat-chip"><div class="num">${inboxPending}</div><div class="lbl">Na caixa de entrada</div></div>`;
 }
 
@@ -1440,14 +1440,14 @@ function renderTodayView(){
   updateTodayHeaderTag();
   renderTodayStats();
   renderTodayAgenda();
-  renderDailyGoals();
+  renderMonthlyGoals();
   renderTodayInbox();
   renderClosing();
 }
 
 /* ---------------- EXPORT / IMPORT ---------------- */
 function exportData(){
-  const data = { categories, events, tasks, orders, dailyGoals, closingChecklist, backupDate: new Date().toISOString() };
+  const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, backupDate: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1469,7 +1469,7 @@ function importData(event){
       if(data.events) events = data.events;
       if(data.tasks) tasks = data.tasks;
       if(data.orders) orders = data.orders;
-      if(data.dailyGoals) dailyGoals = data.dailyGoals;
+      if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
       if(data.closingChecklist) closingChecklist = data.closingChecklist;
       renderCategories();
       renderTasks();
