@@ -253,8 +253,10 @@ function seedData(){
     ],
     settings:{
       cardCeiling: 30,           // % máximo saudável da renda em faturas de cartão
-      reserve:{ saldoAtual: 0, metaMeses: 6 }
-    }
+      reserve:{ saldoAtual: 0, metaMeses: 6 },
+      cards: []                  // {id, name}
+    },
+    cardPurchases: []            // {id, cardId, month:'YYYY-MM', desc, valor, category}
   };
 }
 
@@ -270,9 +272,11 @@ function loadState(){
       })));
       uid = maxId+1;
       // compatibilidade com backups antigos sem "settings"
-      if(!parsed.settings) parsed.settings = { cardCeiling:30, reserve:{ saldoAtual:0, metaMeses:6 } };
+      if(!parsed.settings) parsed.settings = { cardCeiling:30, reserve:{ saldoAtual:0, metaMeses:6 }, cards:[] };
       if(!parsed.settings.reserve) parsed.settings.reserve = { saldoAtual:0, metaMeses:6 };
       if(parsed.settings.cardCeiling==null) parsed.settings.cardCeiling = 30;
+      if(!parsed.settings.cards) parsed.settings.cards = [];
+      if(!parsed.cardPurchases) parsed.cardPurchases = [];
       return parsed;
     }
   }catch(e){ console.warn('estado corrompido, recriando', e); }
@@ -302,12 +306,47 @@ function parseInstallment(nota){
 const isCardItem = i => /cart[aã]o/i.test(i.nome);
 function cardCeiling(){ return (state.settings && state.settings.cardCeiling) || 30; }
 function cardItemsOf(month){ return month.variable.filter(isCardItem); }
-function cardTotalOf(month){ return cardItemsOf(month).reduce((a,b)=>a+Number(b.valor||0),0); }
+function legacyCardTotal(month){ return cardItemsOf(month).reduce((a,b)=>a+Number(b.valor||0),0); }
+
+/* ---- Cartões cadastrados e gastos individuais por categoria ---- */
+const CARD_CATEGORIES = [
+  {id:'alimentacao', label:'Alimentação', color:'#B7862E'},
+  {id:'transporte', label:'Transporte', color:'#2F7A4F'},
+  {id:'saude', label:'Saúde', color:'#C0392B'},
+  {id:'lazer', label:'Lazer', color:'#6C63FF'},
+  {id:'casa', label:'Casa', color:'#4C8BF5'},
+  {id:'compras', label:'Compras', color:'#E07A5F'},
+  {id:'assinaturas', label:'Assinaturas', color:'#8E44AD'},
+  {id:'educacao', label:'Educação', color:'#16A085'},
+  {id:'outros', label:'Outros', color:'#6B7280'},
+];
+function catInfo(id){ return CARD_CATEGORIES.find(c=>c.id===id) || CARD_CATEGORIES[CARD_CATEGORIES.length-1]; }
+function cardsList(){ return (state.settings.cards)||[]; }
+function cardById(id){ return cardsList().find(c=>c.id===id); }
+function purchasesOfMonth(monthId){ return (state.cardPurchases||[]).filter(p=>p.month===monthId); }
+function purchasesOf(cardId, monthId){ return purchasesOfMonth(monthId).filter(p=>p.cardId===cardId); }
+function purchasesTotalOf(monthId){ return purchasesOfMonth(monthId).reduce((a,b)=>a+Number(b.valor||0),0); }
+function cardTotalOf(month){ return legacyCardTotal(month) + purchasesTotalOf(month.id); }
+function categoryBreakdownOf(monthId){
+  const items = purchasesOfMonth(monthId);
+  const total = items.reduce((a,b)=>a+Number(b.valor||0),0);
+  const byCat = {};
+  items.forEach(p=>{
+    byCat[p.category] = (byCat[p.category]||0) + Number(p.valor||0);
+  });
+  return Object.keys(byCat).map(id=>{
+    const info = catInfo(id);
+    const val = byCat[id];
+    return {id, label:info.label, color:info.color, total:val, pct: total>0 ? (val/total*100) : 0};
+  }).sort((a,b)=>b.total-a.total);
+}
 function cardHistory(){
   return sortedMonths().map(m=>{
     const t = monthTotals(m);
-    const items = cardItemsOf(m);
-    const total = items.reduce((a,b)=>a+Number(b.valor||0),0);
+    const legacyItems = cardItemsOf(m).map(i=>({id:null, nome:i.nome, valor:Number(i.valor)||0, category:null}));
+    const purchaseItems = purchasesOfMonth(m.id).map(p=>({id:p.id, nome:p.desc, valor:Number(p.valor)||0, category:p.category}));
+    const items = [...legacyItems, ...purchaseItems];
+    const total = items.reduce((a,b)=>a+b.valor,0);
     const pct = t.income>0 ? (total/t.income*100) : 0;
     return {month:m, items, total, pct, income:t.income};
   });
@@ -651,6 +690,10 @@ function renderCartao(){
   const hist = cardHistory();
   const ceiling = cardCeiling();
   const last = hist[hist.length-1];
+  const months = sortedMonths();
+  const curMonth = monthById(state.ui.month) || months[months.length-1];
+  const cards = cardsList();
+  const breakdown = curMonth ? categoryBreakdownOf(curMonth.id) : [];
 
   return `
     ${last && last.pct>ceiling ? `
@@ -669,7 +712,81 @@ function renderCartao(){
     </div>
 
     <div class="card">
-      <h2><span class="eyebrow">Evolução da fatura de cartão</span></h2>
+      <h2><span class="eyebrow">Meus cartões</span></h2>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        ${cards.length ? cards.map(c=>`
+          <span style="display:flex;align-items:center;gap:6px;background:var(--gold-bg);color:#6B4E17;border-radius:20px;padding:6px 6px 6px 14px;font-size:13px;font-weight:600;">
+            ${escapeHtml(c.name)}
+            <button class="icon-btn" data-del-card="${c.id}" style="padding:2px 6px;">×</button>
+          </span>
+        `).join('') : `<span style="color:var(--ink-soft);font-size:13px;">Nenhum cartão cadastrado ainda.</span>`}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="newCardName" placeholder="Nome do cartão (ex: Nubank)" style="flex:1;min-width:180px;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;">
+        <button class="btn gold sm" id="btnAddCard">+ Adicionar cartão</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="eyebrow">Lançar gasto</span></h2>
+      <div class="month-strip">
+        ${months.map(m=>`<button class="month-pill ${curMonth && m.id===curMonth.id?'active':''}" data-month="${m.id}">${m.label.split(' ')[0]}<span class="b">${m.id.slice(2,4)}</span></button>`).join('')}
+      </div>
+      ${cards.length===0 ? `<div class="empty">Cadastre um cartão acima para começar a lançar gastos.</div>` : `
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px 10px;">
+        <div><label style="display:block;font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Descrição</label>
+        <input id="newExpDesc" placeholder="Ex: Supermercado" style="width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;"></div>
+        <div><label style="display:block;font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Valor</label>
+        <input id="newExpValor" type="number" step="0.01" placeholder="0,00" style="width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;"></div>
+        <div><label style="display:block;font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Cartão</label>
+        <select id="newExpCard" style="width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;">${cards.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}</select></div>
+        <div><label style="display:block;font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">Categoria</label>
+        <select id="newExpCat" style="width:100%;padding:9px 10px;border:1px solid var(--rule);border-radius:7px;">${CARD_CATEGORIES.map(cc=>`<option value="${cc.id}">${cc.label}</option>`).join('')}</select></div>
+      </div>
+      <button class="btn gold" id="btnAddExpense" style="margin-top:10px;">+ Adicionar gasto</button>
+      `}
+    </div>
+
+    <div class="card">
+      <h2><span class="eyebrow">Gasto por categoria · ${curMonth?curMonth.label:''}</span></h2>
+      ${breakdown.length ? breakdown.map(cb=>`
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+            <span style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:2px;background:${cb.color};display:inline-block;"></i>${cb.label}</span>
+            <span class="num">${BRL(cb.total)} · ${cb.pct.toFixed(0)}%</span>
+          </div>
+          <div class="progress"><div style="width:${cb.pct}%;background:${cb.color};"></div></div>
+        </div>
+      `).join('') : `<div class="empty">Nenhum gasto categorizado neste mês ainda. Lance gastos acima pra ver os indicadores.</div>`}
+    </div>
+
+    ${cards.length ? `
+    <div class="card">
+      <h2><span class="eyebrow">Gastos lançados · ${curMonth?curMonth.label:''}</span></h2>
+      ${cards.map(c=>{
+        const items = curMonth ? purchasesOf(c.id, curMonth.id) : [];
+        const total = items.reduce((a,b)=>a+Number(b.valor||0),0);
+        return `
+          <div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;font-weight:600;margin-bottom:6px;">
+              <span>${escapeHtml(c.name)}</span>
+              <span class="num">${BRL(total)}</span>
+            </div>
+            ${items.length? `<table><tbody>
+              ${items.map(i=>`<tr>
+                <td>${escapeHtml(i.desc)}</td>
+                <td style="font-size:11.5px;color:${catInfo(i.category).color};">${catInfo(i.category).label}</td>
+                <td class="num">${BRL(Number(i.valor)||0)}</td>
+                <td style="width:30px;"><button class="icon-btn" data-del-purchase="${i.id}">✕</button></td>
+              </tr>`).join('')}
+            </tbody></table>` : `<div class="empty">Nenhum gasto lançado neste cartão este mês.</div>`}
+          </div>
+        `;
+      }).join('')}
+    </div>` : ''}
+
+    <div class="card">
+      <h2><span class="eyebrow">Evolução da fatura</span></h2>
       <div class="chart-wrap"><canvas id="chartCard"></canvas></div>
     </div>
 
@@ -682,7 +799,11 @@ function renderCartao(){
             <span class="num" style="color:${h.pct>ceiling?'var(--debit)':'var(--ink)'}">${BRL(h.total)} · ${h.pct.toFixed(0)}% da renda</span>
           </div>
           ${h.items.length? `<table><tbody>
-            ${h.items.map(i=>`<tr><td>${escapeHtml(i.nome)}</td><td class="num">${BRL(Number(i.valor)||0)}</td></tr>`).join('')}
+            ${h.items.map(i=>`<tr>
+              <td>${escapeHtml(i.nome)}</td>
+              <td style="font-size:11.5px;color:${i.category?catInfo(i.category).color:'var(--ink-soft)'};">${i.category?catInfo(i.category).label:''}</td>
+              <td class="num">${BRL(Number(i.valor)||0)}</td>
+            </tr>`).join('')}
           </tbody></table>` : `<div class="empty">Nenhuma fatura de cartão lançada neste mês.</div>`}
         </div>
       `).join('') || `<div class="empty">Nenhum dado ainda.</div>`}
@@ -892,6 +1013,47 @@ function bindEvents(){
   if(cardCeilingInput) cardCeilingInput.addEventListener('change', ()=>{
     const v = parseFloat(cardCeilingInput.value)||30;
     state.settings.cardCeiling = v; save(); render();
+  });
+
+  const btnAddCard = document.getElementById('btnAddCard');
+  if(btnAddCard) btnAddCard.onclick = ()=>{
+    const input = document.getElementById('newCardName');
+    const name = input.value.trim();
+    if(!name){ toast('Digite o nome do cartão'); return; }
+    if(!state.settings.cards) state.settings.cards = [];
+    state.settings.cards.push({id:newId(), name});
+    save(); render(); toast('Cartão adicionado');
+  };
+  document.querySelectorAll('[data-del-card]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.delCard;
+      const card = cardById(id);
+      const hasPurchases = (state.cardPurchases||[]).some(p=>p.cardId===id);
+      if(hasPurchases && !confirm(`Excluir "${card?card.name:''}" também vai apagar os gastos lançados nele. Continuar?`)) return;
+      state.settings.cards = state.settings.cards.filter(c=>c.id!==id);
+      state.cardPurchases = (state.cardPurchases||[]).filter(p=>p.cardId!==id);
+      save(); render(); toast('Cartão removido');
+    };
+  });
+
+  const btnAddExpense = document.getElementById('btnAddExpense');
+  if(btnAddExpense) btnAddExpense.onclick = ()=>{
+    const desc = document.getElementById('newExpDesc').value.trim();
+    const valor = parseFloat(document.getElementById('newExpValor').value);
+    const cardId = document.getElementById('newExpCard').value;
+    const category = document.getElementById('newExpCat').value;
+    if(!desc){ toast('Descreva o gasto'); return; }
+    if(!valor || valor<=0){ toast('Informe um valor válido'); return; }
+    if(!state.cardPurchases) state.cardPurchases = [];
+    state.cardPurchases.push({id:newId(), cardId, month:state.ui.month, desc, valor, category});
+    save(); render(); toast('Gasto lançado');
+  };
+  document.querySelectorAll('[data-del-purchase]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.delPurchase;
+      state.cardPurchases = (state.cardPurchases||[]).filter(p=>p.id!==id);
+      save(); render(); toast('Gasto removido');
+    };
   });
 
   const reserveSaldo = document.getElementById('reserveSaldo');
