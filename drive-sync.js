@@ -94,7 +94,11 @@ window.DriveSync = (function(){
     options.headers = Object.assign({}, options.headers, { Authorization: 'Bearer ' + accessToken });
     const res = await fetch(url, options);
     if(res.status === 401){ accessToken = null; notify('expired'); throw new Error('Sessão expirada'); }
-    if(!res.ok) throw new Error('Drive API ' + res.status);
+    if(!res.ok){
+      let detail = '';
+      try{ const body = await res.json(); detail = body && body.error && body.error.message ? body.error.message : ''; }catch(e){}
+      throw new Error('Drive API ' + res.status + (detail ? ' — ' + detail : ''));
+    }
     return res;
   }
 

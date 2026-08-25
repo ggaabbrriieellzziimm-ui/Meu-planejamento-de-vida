@@ -530,7 +530,7 @@ if(window.DriveSync){
         DriveSync.loadJson('treino-backup.json').then(cloud => {
           if(cloud) applyCloudData(cloud); else saveState();
           setDriveStatus('Drive: sincronizado · ' + now);
-        }).catch(() => setDriveStatus('Drive: erro ao carregar.'));
+        }).catch((err) => setDriveStatus('Drive: erro ao carregar · ' + (err && err.message ? err.message : 'desconhecido')));
       } else if(status === 'saved'){
         setDriveStatus('Drive: sincronizado · ' + now);
       } else if(status === 'disconnected'){

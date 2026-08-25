@@ -1538,7 +1538,7 @@ if(window.DriveSync){
         DriveSync.loadJson('rotina-backup.json').then(cloud => {
           if(cloud) applyCloudData(cloud); else saveState();
           setDriveStatus('Sincronizado com o Drive · ' + now);
-        }).catch(() => setDriveStatus('Erro ao carregar do Drive.'));
+        }).catch((err) => setDriveStatus('Erro ao carregar do Drive: ' + (err && err.message ? err.message : 'desconhecido')));
       } else if(status === 'saved'){
         setDriveStatus('Sincronizado com o Drive · ' + now);
       } else if(status === 'disconnected'){
