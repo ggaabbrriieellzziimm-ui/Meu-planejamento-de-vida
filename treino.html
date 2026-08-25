@@ -155,8 +155,12 @@
     <span class="dot"></span>
     <h1>Meu Treino</h1>
   </div>
-  <a href="index.html" class="menu-link">← Menu</a>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="menu-link" id="driveBtn" onclick="DriveSync.connect()" style="background:none;cursor:pointer;">☁ Drive</button>
+    <a href="index.html" class="menu-link">← Menu</a>
+  </div>
 </div>
+<div id="driveStatus" style="text-align:center;font-size:0.68rem;color:#c9b9b3;padding:6px 16px 0;"></div>
 
 <div class="container">
   <div class="stats-row" id="statsRow"></div>
@@ -198,6 +202,7 @@
   </div>
 </div>
 
+<script src="drive-sync.js"></script>
 <script>
 const STORAGE_KEY = 'meu-treino-v1';
 
@@ -261,8 +266,19 @@ function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
 
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions })); }
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions }));
+    if(window.DriveSync) DriveSync.autoSave('treino-backup.json', () => ({ workouts, completions }));
+  }
   catch(err){ console.error('Não foi possível salvar automaticamente:', err); }
+}
+function applyCloudData(data){
+  if(!data) return;
+  if(data.workouts) workouts = data.workouts;
+  if(data.completions) completions = data.completions;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions }));
+  renderWorkouts();
+  renderStats();
 }
 function loadState(){
   try{
@@ -500,6 +516,34 @@ document.getElementById('exerciseModalBg').addEventListener('click', (e)=>{
 loadState();
 renderWorkouts();
 renderStats();
+
+if(window.DriveSync){
+  function setDriveStatus(text){ const el = document.getElementById('driveStatus'); if(el) el.textContent = text; }
+  if(!DriveSync.isConfigured()){
+    setDriveStatus('Drive: ainda não configurado.');
+  } else {
+    setDriveStatus('Drive: não conectado');
+    DriveSync.onStatus((status, detail) => {
+      const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      if(status === 'connected'){
+        setDriveStatus('Drive: sincronizando…');
+        DriveSync.loadJson('treino-backup.json').then(cloud => {
+          if(cloud) applyCloudData(cloud); else saveState();
+          setDriveStatus('Drive: sincronizado · ' + now);
+        }).catch(() => setDriveStatus('Drive: erro ao carregar.'));
+      } else if(status === 'saved'){
+        setDriveStatus('Drive: sincronizado · ' + now);
+      } else if(status === 'disconnected'){
+        setDriveStatus('Drive: não conectado');
+      } else if(status === 'expired'){
+        setDriveStatus('Drive: sessão expirada, toque em ☁ Drive');
+      } else if(status === 'error'){
+        setDriveStatus('Drive: erro · ' + detail);
+      }
+    });
+    DriveSync.trySilent();
+  }
+}
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {

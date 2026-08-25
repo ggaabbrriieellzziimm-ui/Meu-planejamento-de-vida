@@ -154,6 +154,7 @@
   <div class="modal" id="modalBody"></div>
 </div>
 
+<script src="drive-sync.js"></script>
 <script>
 /* ============ ESTADO E PERSISTÊNCIA ============ */
 const STORAGE_KEY = 'livro-caixa-financas-v1';
@@ -288,7 +289,20 @@ function loadState(){
   return seedData();
 }
 let state = loadState();
-function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if(window.DriveSync) DriveSync.autoSave('financas-backup.json', () => state);
+}
+function applyCloudState(data){
+  if(!data) return;
+  state = data;
+  if(!state.settings) state.settings = { cardCeiling:30, reserve:{ saldoAtual:0, metaMeses:6 }, cards:[] };
+  if(!state.settings.reserve) state.settings.reserve = { saldoAtual:0, metaMeses:6 };
+  if(!state.settings.cards) state.settings.cards = [];
+  if(!state.cardPurchases) state.cardPurchases = [];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  render();
+}
 
 /* ============ HELPERS ============ */
 const BRL = n => (n<0?'-':'') + 'R$ ' + Math.abs(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -975,6 +989,12 @@ function renderConfig(){
       ${renderCarryOverOptions()}
     </div>
     <div class="card">
+      <h2><span class="eyebrow">Google Drive</span></h2>
+      <p style="font-size:13.5px;color:var(--ink-soft);">Conecte pra salvar automaticamente numa pasta do seu Drive e recuperar sozinho, mesmo depois de limpar o cache do navegador.</p>
+      <div id="driveStatus" style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${window.DriveSync && DriveSync.isConnected() ? 'Conectado.' : 'Não conectado.'}</div>
+      <button class="btn gold" onclick="DriveSync.connect()">Conectar ao Google Drive</button>
+    </div>
+    <div class="card">
       <h2><span class="eyebrow">Backup dos dados</span></h2>
       <p style="font-size:13.5px;color:var(--ink-soft);">Seus dados ficam salvos apenas neste navegador. Exporte regularmente um arquivo de backup.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -1142,6 +1162,34 @@ function bindEvents(){
 }
 
 render();
+
+if(window.DriveSync){
+  function setDriveStatus(text){ const el = document.getElementById('driveStatus'); if(el) el.textContent = text; }
+  if(!DriveSync.isConfigured()){
+    setDriveStatus('Ainda não configurado neste app.');
+  } else {
+    DriveSync.onStatus((status, detail) => {
+      const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      if(status === 'connected'){
+        setDriveStatus('Conectado · sincronizando…');
+        DriveSync.loadJson('financas-backup.json').then(cloud => {
+          if(cloud) applyCloudState(cloud); else save();
+          setDriveStatus('Sincronizado com o Drive · ' + now);
+        }).catch(() => setDriveStatus('Erro ao carregar do Drive.'));
+      } else if(status === 'saved'){
+        setDriveStatus('Sincronizado com o Drive · ' + now);
+      } else if(status === 'disconnected'){
+        setDriveStatus('Não conectado.');
+      } else if(status === 'expired'){
+        setDriveStatus('Sessão expirada — toque em "Conectar" de novo.');
+      } else if(status === 'error'){
+        setDriveStatus('Erro: ' + detail);
+      }
+    });
+    setDriveStatus('Não conectado.');
+    DriveSync.trySilent();
+  }
+}
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {

@@ -434,6 +434,12 @@
     </div>
 
     <div class="desk-section">
+      <h2>Google Drive</h2>
+      <div id="driveStatus" style="font-size:0.72rem;color:#9fb0aa;margin-bottom:10px;line-height:1.4;">Verificando…</div>
+      <button class="btn-brass" style="width:100%;" onclick="DriveSync.connect()">Conectar ao Google Drive</button>
+    </div>
+
+    <div class="desk-section">
       <h2>Backup</h2>
       <div class="add-row">
         <button class="btn-brass" style="flex:1" onclick="exportData()">Fazer backup</button>
@@ -650,6 +656,7 @@
   </div>
 </div>
 
+<script src="drive-sync.js"></script>
 <script>
 /* ---------------- STATE (autosave via localStorage on this domain + Backup/Restaurar as segurança) ---------------- */
 const DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
@@ -730,9 +737,22 @@ function saveState(){
   try{
     const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks }));
   }catch(err){
     console.error('Não foi possível salvar automaticamente:', err);
   }
+}
+function applyCloudData(data){
+  if(!data) return;
+  if(data.categories) categories = data.categories;
+  if(data.events) events = data.events;
+  if(data.tasks) tasks = data.tasks;
+  if(data.orders) orders = data.orders;
+  if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
+  if(data.closingChecklist) closingChecklist = data.closingChecklist;
+  if(data.todayChecks) todayChecks = data.todayChecks;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  renderCategories(); renderTasks(); buildGridSkeleton(); renderWorkload(); renderMonthView(); renderTodayView();
 }
 function loadState(){
   try{
@@ -1503,6 +1523,35 @@ updateTodayTag();
 initMonthControls();
 renderMonthView();
 renderTodayView();
+
+if(window.DriveSync){
+  const driveStatusEl = document.getElementById('driveStatus');
+  function setDriveStatus(text){ if(driveStatusEl) driveStatusEl.textContent = text; }
+  if(!DriveSync.isConfigured()){
+    setDriveStatus('Ainda não configurado neste app.');
+  } else {
+    setDriveStatus('Não conectado.');
+    DriveSync.onStatus((status, detail) => {
+      const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      if(status === 'connected'){
+        setDriveStatus('Conectado · sincronizando…');
+        DriveSync.loadJson('rotina-backup.json').then(cloud => {
+          if(cloud) applyCloudData(cloud); else saveState();
+          setDriveStatus('Sincronizado com o Drive · ' + now);
+        }).catch(() => setDriveStatus('Erro ao carregar do Drive.'));
+      } else if(status === 'saved'){
+        setDriveStatus('Sincronizado com o Drive · ' + now);
+      } else if(status === 'disconnected'){
+        setDriveStatus('Não conectado.');
+      } else if(status === 'expired'){
+        setDriveStatus('Sessão expirada — toque em "Conectar" de novo.');
+      } else if(status === 'error'){
+        setDriveStatus('Erro: ' + detail);
+      }
+    });
+    DriveSync.trySilent();
+  }
+}
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
