@@ -506,6 +506,7 @@ function render(){
   bindEvents();
   if(state.ui.view==='dashboard') drawCharts();
   if(state.ui.view==='cartao') drawCardChart();
+  if(state.ui.view==='cartao') drawCardCategoryChart();
 }
 
 function tabBtn(id,label){
@@ -757,6 +758,7 @@ function renderCartao(){
 
     <div class="card">
       <h2><span class="eyebrow">Gasto por categoria · ${curMonth?curMonth.label:''}</span></h2>
+      ${breakdown.length ? `<div class="chart-wrap" style="height:220px;margin-bottom:14px;"><canvas id="chartCardCat"></canvas></div>` : ''}
       ${breakdown.length ? breakdown.map(cb=>`
         <div style="margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
@@ -835,6 +837,30 @@ function drawCardChart(){
       ]
     },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{font:{family:'IBM Plex Sans'}}}} }
+  });
+}
+
+function drawCardCategoryChart(){
+  const months = sortedMonths();
+  const curMonth = monthById(state.ui.month) || months[months.length-1];
+  if(!curMonth) return;
+  const breakdown = categoryBreakdownOf(curMonth.id);
+  const ctx = document.getElementById('chartCardCat');
+  if(!ctx || !breakdown.length) return;
+  if(window._chartCardCat) window._chartCardCat.destroy();
+  window._chartCardCat = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: breakdown.map(b=>b.label),
+      datasets:[{ data: breakdown.map(b=>b.total), backgroundColor: breakdown.map(b=>b.color) }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'bottom', labels:{font:{family:'IBM Plex Sans'}, boxWidth:10} },
+        tooltip:{ callbacks:{ label: (ctx)=> `${ctx.label}: ${BRL(ctx.parsed)}` } }
+      }
+    }
   });
 }
 
