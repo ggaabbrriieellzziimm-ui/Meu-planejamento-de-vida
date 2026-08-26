@@ -26,6 +26,8 @@ window.DriveSync = (function(){
   let accessToken = null;
   let folderId = null;
   let saveTimer = null;
+  let pendingFilename = null;
+  let pendingGetData = null;
   const listeners = [];
 
   function notify(status, detail){ listeners.forEach(fn => { try{ fn(status, detail); }catch(e){} }); }
@@ -91,6 +93,7 @@ window.DriveSync = (function(){
 
   async function api(url, options){
     options = options || {};
+    options.keepalive = true;
     options.headers = Object.assign({}, options.headers, { Authorization: 'Bearer ' + accessToken });
     const res = await fetch(url, options);
     if(res.status === 401){ accessToken = null; notify('expired'); throw new Error('Sessão expirada'); }
@@ -154,11 +157,28 @@ window.DriveSync = (function(){
 
   function autoSave(filename, getData, delay){
     if(!accessToken) return;
+    pendingFilename = filename;
+    pendingGetData = getData;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      saveJson(filename, getData()).catch(e => notify('error', e.message));
-    }, delay || 1500);
+      flush();
+    }, delay || 800);
   }
 
-  return { trySilent, connect, disconnect, saveJson, loadJson, autoSave, onStatus, isConfigured, isConnected };
+  function flush(){
+    if(!accessToken || !pendingGetData) return;
+    clearTimeout(saveTimer);
+    const filename = pendingFilename;
+    const data = pendingGetData();
+    pendingGetData = null;
+    saveJson(filename, data).catch(e => notify('error', e.message));
+  }
+
+  return { trySilent, connect, disconnect, saveJson, loadJson, autoSave, flush, onStatus, isConfigured, isConnected };
 })();
+
+// Garante que uma alteração recente não se perca ao sair da tela ou trocar de aba
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) window.DriveSync.flush();
+});
+window.addEventListener('pagehide', () => window.DriveSync.flush());

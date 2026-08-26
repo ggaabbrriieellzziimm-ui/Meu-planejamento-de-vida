@@ -290,11 +290,19 @@ function loadState(){
 }
 let state = loadState();
 function save(){
+  state._ts = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if(window.DriveSync) DriveSync.autoSave('financas-backup.json', () => state);
+  if(window.DriveSync) DriveSync.autoSave('financas-backup.json', () => { state._ts = Date.now(); return state; });
 }
 function applyCloudState(data){
   if(!data) return;
+  const localTs = state && state._ts ? state._ts : 0;
+  const cloudTs = data._ts || 0;
+  if(localTs > cloudTs){
+    // o que está neste aparelho é mais novo que o que veio da nuvem — sobe o local em vez de sobrescrever
+    save();
+    return;
+  }
   state = data;
   if(!state.settings) state.settings = { cardCeiling:30, reserve:{ saldoAtual:0, metaMeses:6 }, cards:[] };
   if(!state.settings.reserve) state.settings.reserve = { saldoAtual:0, metaMeses:6 };

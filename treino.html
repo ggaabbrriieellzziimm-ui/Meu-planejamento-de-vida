@@ -267,16 +267,26 @@ function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions }));
-    if(window.DriveSync) DriveSync.autoSave('treino-backup.json', () => ({ workouts, completions }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions, _ts: Date.now() }));
+    if(window.DriveSync) DriveSync.autoSave('treino-backup.json', () => ({ workouts, completions, _ts: Date.now() }));
   }
   catch(err){ console.error('Não foi possível salvar automaticamente:', err); }
 }
 function applyCloudData(data){
   if(!data) return;
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const local = raw ? JSON.parse(raw) : null;
+    const localTs = local && local._ts ? local._ts : 0;
+    const cloudTs = data._ts || 0;
+    if(localTs > cloudTs){
+      saveState();
+      return;
+    }
+  }catch(err){ /* segue e aplica os dados da nuvem mesmo assim */ }
   if(data.workouts) workouts = data.workouts;
   if(data.completions) completions = data.completions;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ workouts, completions }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   renderWorkouts();
   renderStats();
 }

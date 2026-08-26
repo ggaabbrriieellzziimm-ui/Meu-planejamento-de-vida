@@ -225,6 +225,7 @@
     font-size:0.68rem; padding:2px 5px; border-radius:4px; color:#20221c;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  .order-chip.delivered{ opacity:0.55; text-decoration:line-through; }
   .order-more{ font-size:0.65rem; color:var(--ink-soft); padding-left:2px; }
 
   /* ---------- Hoje ---------- */
@@ -646,6 +647,10 @@
       <label>Observações</label>
       <input type="text" id="osNotes" placeholder="Opcional">
     </div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="osDelivered" style="width:18px;height:18px;accent-color:#2f8a6f;">
+      <label style="text-transform:none;font-size:0.88rem;color:var(--ink);margin:0;">✓ O.S. preenchida e entregue</label>
+    </div>
     <div class="modal-actions">
       <div class="left">
         <button class="btn-cancel" onclick="closeOrderModal()">Cancelar</button>
@@ -735,15 +740,26 @@ let currentMonth, currentYear;
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
   try{
-    const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks };
+    const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks }));
+    if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() }));
   }catch(err){
     console.error('Não foi possível salvar automaticamente:', err);
   }
 }
 function applyCloudData(data){
   if(!data) return;
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const local = raw ? JSON.parse(raw) : null;
+    const localTs = local && local._ts ? local._ts : 0;
+    const cloudTs = data._ts || 0;
+    if(localTs > cloudTs){
+      // o que está neste aparelho é mais novo que o que veio da nuvem — sobe o local em vez de sobrescrever
+      saveState();
+      return;
+    }
+  }catch(err){ /* segue e aplica os dados da nuvem mesmo assim */ }
   if(data.categories) categories = data.categories;
   if(data.events) events = data.events;
   if(data.tasks) tasks = data.tasks;
@@ -1193,9 +1209,9 @@ function renderMonthView(){
     dayOrders.slice(0,4).forEach(o=>{
       const cat = catById(o.catId) || {color:'#ccc'};
       const chip = document.createElement('div');
-      chip.className = 'order-chip';
+      chip.className = 'order-chip' + (o.delivered ? ' delivered' : '');
       chip.style.background = cat.color + 'cc';
-      chip.textContent = (o.start ? o.start + ' · ' : '') + o.title + (o.osNumber ? ' #' + o.osNumber : '');
+      chip.textContent = (o.delivered ? '✓ ' : '') + (o.start ? o.start + ' · ' : '') + o.title + (o.osNumber ? ' #' + o.osNumber : '');
       chip.onclick = (e) => { e.stopPropagation(); openOrderModal(key, o); };
       cell.appendChild(chip);
     });
@@ -1228,6 +1244,7 @@ function openOrderModal(dateKeyStr, order){
   document.getElementById('osDescription').value = order ? (order.description||'') : '';
   document.getElementById('osCat').value = order ? order.catId : (categories[0] ? categories[0].id : '');
   document.getElementById('osNotes').value = order ? (order.notes||'') : '';
+  document.getElementById('osDelivered').checked = order ? !!order.delivered : false;
 
   document.getElementById('orderModalBg').classList.add('open');
 }
@@ -1245,6 +1262,7 @@ function saveOrder(){
   const description = document.getElementById('osDescription').value.trim();
   const catId = document.getElementById('osCat').value;
   const notes = document.getElementById('osNotes').value.trim();
+  const delivered = document.getElementById('osDelivered').checked;
 
   if(!title){ alert('Dê um título para o serviço.'); return; }
   const key = parseDateBR(dateStr);
@@ -1255,9 +1273,9 @@ function saveOrder(){
 
   if(editingOrderId){
     const o = orders.find(o=>o.id===editingOrderId);
-    Object.assign(o, {title, osNumber, date:key, start, end, team, description, catId, notes});
+    Object.assign(o, {title, osNumber, date:key, start, end, team, description, catId, notes, delivered});
   } else {
-    orders.push({id: uid(), title, osNumber, date:key, start, end, team, description, catId, notes});
+    orders.push({id: uid(), title, osNumber, date:key, start, end, team, description, catId, notes, delivered});
   }
   closeOrderModal();
   renderMonthView();
@@ -1301,7 +1319,7 @@ function getTodayAgendaItems(){
   });
 
   orders.filter(o=>o.date===todayKey).forEach(o=>{
-    let title = o.title;
+    let title = (o.delivered ? '✓ ' : '') + o.title;
     if(o.osNumber) title += ' #' + o.osNumber;
     if(o.team) title += ' · ' + o.team;
     items.push({
