@@ -105,20 +105,25 @@ window.DriveSync = (function(){
     return res;
   }
 
+  let folderPromise = null;
   async function ensureFolder(){
     if(folderId) return folderId;
-    const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
-    const data = await res.json();
-    if(data.files && data.files.length){ folderId = data.files[0].id; return folderId; }
-    const created = await api('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
-    });
-    const j = await created.json();
-    folderId = j.id;
-    return folderId;
+    if(folderPromise) return folderPromise;
+    folderPromise = (async () => {
+      const q = encodeURIComponent(`name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+      const data = await res.json();
+      if(data.files && data.files.length){ folderId = data.files[0].id; return folderId; }
+      const created = await api('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+      });
+      const j = await created.json();
+      folderId = j.id;
+      return folderId;
+    })();
+    try{ return await folderPromise; } finally { folderPromise = null; }
   }
 
   async function findFile(filename){
@@ -126,7 +131,17 @@ window.DriveSync = (function(){
     const q = encodeURIComponent(`name='${filename}' and '${fid}' in parents and trashed=false`);
     const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
     const data = await res.json();
-    return (data.files && data.files[0]) || null;
+    const files = data.files || [];
+    if(!files.length) return null;
+    // Se por algum motivo existir mais de um arquivo com o mesmo nome (ex: falha de rede antiga),
+    // usa sempre o mais recente e apaga os duplicados mais antigos pra não confundir de novo.
+    files.sort((a,b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+    if(files.length > 1){
+      for(let i=1;i<files.length;i++){
+        api(`https://www.googleapis.com/drive/v3/files/${files[i].id}`, { method:'DELETE' }).catch(()=>{});
+      }
+    }
+    return files[0];
   }
 
   async function saveJson(filename, obj){
@@ -155,26 +170,147 @@ window.DriveSync = (function(){
     return await res.json();
   }
 
+  /* ---------------------------------------------------------------
+     Armazenamento "tipo bloco de notas": cada item (ex: cada ordem
+     de serviço) vira UM ARQUIVO PRÓPRIO dentro de uma subpasta.
+     Escrever um item nunca toca no arquivo de outro item — então é
+     fisicamente impossível uma anotação sobrescrever outra.
+     --------------------------------------------------------------- */
+  const subfolderCache = {};
+  let subfolderPromises = {};
+  async function ensureSubfolder(name){
+    if(subfolderCache[name]) return subfolderCache[name];
+    if(subfolderPromises[name]) return subfolderPromises[name];
+    subfolderPromises[name] = (async () => {
+      const parent = await ensureFolder();
+      const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parent}' in parents and trashed=false`);
+      const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+      const data = await res.json();
+      if(data.files && data.files.length){ subfolderCache[name] = data.files[0].id; return subfolderCache[name]; }
+      const created = await api('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parent] })
+      });
+      const j = await created.json();
+      subfolderCache[name] = j.id;
+      return j.id;
+    })();
+    try{ return await subfolderPromises[name]; } finally { delete subfolderPromises[name]; }
+  }
+
+  async function findItemFile(folderId, itemId){
+    const q = encodeURIComponent(`name='${itemId}.json' and '${folderId}' in parents and trashed=false`);
+    const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
+    const data = await res.json();
+    const files = data.files || [];
+    if(!files.length) return null;
+    files.sort((a,b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+    if(files.length > 1){
+      for(let i=1;i<files.length;i++){
+        api(`https://www.googleapis.com/drive/v3/files/${files[i].id}`, { method:'DELETE' }).catch(()=>{});
+      }
+    }
+    return files[0];
+  }
+
+  // Fila por item: duas edições da MESMA anotação nunca rodam ao mesmo tempo,
+  // mas anotações diferentes podem subir em paralelo sem nenhum conflito,
+  // já que cada uma mexe só no próprio arquivo.
+  const itemQueues = {};
+  function queueItemTask(key, task){
+    const prev = itemQueues[key] || Promise.resolve();
+    const next = prev.then(task, task);
+    itemQueues[key] = next.catch(() => {});
+    return next;
+  }
+
+  function saveItem(subfolderName, itemId, obj){
+    const key = subfolderName + ':' + itemId;
+    return queueItemTask(key, async () => {
+      if(!accessToken) return false;
+      const folderId = await ensureSubfolder(subfolderName);
+      const existing = await findItemFile(folderId, itemId);
+      const filename = itemId + '.json';
+      const boundary = 'planeja-' + Math.random().toString(36).slice(2);
+      const metadata = { name: filename, mimeType: 'application/json' };
+      if(!existing) metadata.parents = [folderId];
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(obj)}\r\n--${boundary}--`;
+      const url = existing
+        ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`
+        : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+      await api(url, { method: existing ? 'PATCH' : 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body });
+      notify('item-saved', itemId);
+      return true;
+    }).catch(e => { notify('error', e.message); return false; });
+  }
+
+  function deleteItem(subfolderName, itemId){
+    const key = subfolderName + ':' + itemId;
+    return queueItemTask(key, async () => {
+      if(!accessToken) return false;
+      const folderId = await ensureSubfolder(subfolderName);
+      const existing = await findItemFile(folderId, itemId);
+      if(existing) await api(`https://www.googleapis.com/drive/v3/files/${existing.id}`, { method: 'DELETE' });
+      return true;
+    }).catch(e => { notify('error', e.message); return false; });
+  }
+
+  async function loadAllItems(subfolderName){
+    if(!accessToken) return [];
+    const folderId = await ensureSubfolder(subfolderName);
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    const res = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1000`);
+    const data = await res.json();
+    const files = data.files || [];
+    const results = await Promise.all(files.map(async (f) => {
+      try{
+        const r = await api(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`);
+        return await r.json();
+      }catch(e){ return null; }
+    }));
+    return results.filter(Boolean);
+  }
+
+  // Fila serializada: nunca deixa dois envios acontecerem ao mesmo tempo.
+  // Se uma alteração chegar enquanto outra ainda está subindo, ela espera
+  // a atual terminar e então sobe a versão mais recente (nunca a do meio).
+  let saving = false;
+  let savePending = false;
+
   function autoSave(filename, getData, delay){
     if(!accessToken) return;
     pendingFilename = filename;
     pendingGetData = getData;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      flush();
-    }, delay || 800);
+    saveTimer = setTimeout(() => { flush(); }, delay || 800);
   }
 
   function flush(){
     if(!accessToken || !pendingGetData) return;
     clearTimeout(saveTimer);
+    if(saving){
+      savePending = true;
+      return;
+    }
     const filename = pendingFilename;
     const data = pendingGetData();
     pendingGetData = null;
-    saveJson(filename, data).catch(e => notify('error', e.message));
+    saving = true;
+    saveJson(filename, data)
+      .catch(e => notify('error', e.message))
+      .finally(() => {
+        saving = false;
+        if(savePending){
+          savePending = false;
+          flush();
+        }
+      });
   }
 
-  return { trySilent, connect, disconnect, saveJson, loadJson, autoSave, flush, onStatus, isConfigured, isConnected };
+  return { trySilent, connect, disconnect, saveJson, loadJson, saveItem, deleteItem, loadAllItems, autoSave, flush, onStatus, isConfigured, isConnected };
 })();
 
 // Garante que uma alteração recente não se perca ao sair da tela ou trocar de aba

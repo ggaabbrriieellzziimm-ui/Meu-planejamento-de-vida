@@ -742,7 +742,9 @@ function saveState(){
   try{
     const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() }));
+    // "orders" não entra mais no arquivo único da nuvem — cada ordem de serviço
+    // sincroniza sozinha, como uma anotação independente (ver saveOrder/deleteOrder).
+    if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() }));
   }catch(err){
     console.error('Não foi possível salvar automaticamente:', err);
   }
@@ -763,12 +765,55 @@ function applyCloudData(data){
   if(data.categories) categories = data.categories;
   if(data.events) events = data.events;
   if(data.tasks) tasks = data.tasks;
-  if(data.orders) orders = data.orders;
+  // "orders" é tratado à parte por mergeOrdersFromCloud — nunca sobrescrito aqui.
   if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
   if(data.closingChecklist) closingChecklist = data.closingChecklist;
   if(data.todayChecks) todayChecks = data.todayChecks;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  saveState();
   renderCategories(); renderTasks(); buildGridSkeleton(); renderWorkload(); renderMonthView(); renderTodayView();
+}
+
+/* As ordens de serviço funcionam como um bloco de notas: cada uma é seu
+   próprio arquivo no Drive. Aqui só ADICIONAMOS ou ATUALIZAMOS uma ordem
+   vinda da nuvem se ela for mais nova — NUNCA removemos uma ordem local
+   por ela não aparecer na nuvem (evita perda por falha de rede/sincronismo). */
+function mergeOrdersFromCloud(cloudOrders){
+  if(!cloudOrders || !cloudOrders.length) return;
+  const localById = {};
+  orders.forEach(o => { localById[o.id] = o; });
+  let changed = false;
+
+  cloudOrders.forEach(co => {
+    const lo = localById[co.id];
+    if(!lo){
+      orders.push(co);
+      changed = true;
+    } else {
+      const localTs = lo._ts || 0;
+      const cloudTs = co._ts || 0;
+      if(cloudTs > localTs){
+        Object.assign(lo, co);
+        changed = true;
+      } else if(localTs > cloudTs && window.DriveSync){
+        DriveSync.saveItem('Ordens de Servico', lo.id, lo);
+      }
+    }
+  });
+
+  // Ordens que só existem neste aparelho (ainda não subiram) — sobe agora.
+  if(window.DriveSync){
+    orders.forEach(o => {
+      if(!cloudOrders.some(co => co.id === o.id)){
+        DriveSync.saveItem('Ordens de Servico', o.id, o);
+      }
+    });
+  }
+
+  if(changed){
+    saveState();
+    renderMonthView();
+    renderTodayView();
+  }
 }
 function loadState(){
   try{
@@ -1271,23 +1316,31 @@ function saveOrder(){
   if(end && !validTime(end)){ alert('Use o formato HH:MM para o fim, ex: 11:00'); return; }
   if(start && end && timeToMin(end) <= timeToMin(start)){ alert('O horário final precisa ser depois do inicial.'); return; }
 
+  let savedOrder;
   if(editingOrderId){
     const o = orders.find(o=>o.id===editingOrderId);
-    Object.assign(o, {title, osNumber, date:key, start, end, team, description, catId, notes, delivered});
+    Object.assign(o, {title, osNumber, date:key, start, end, team, description, catId, notes, delivered, _ts: Date.now()});
+    savedOrder = o;
   } else {
-    orders.push({id: uid(), title, osNumber, date:key, start, end, team, description, catId, notes, delivered});
+    savedOrder = {id: uid(), title, osNumber, date:key, start, end, team, description, catId, notes, delivered, _ts: Date.now()};
+    orders.push(savedOrder);
   }
   closeOrderModal();
   renderMonthView();
   renderTodayView();
   saveState();
+  // Cada ordem de serviço é seu próprio arquivo no Drive — anotar esta
+  // nunca toca no arquivo de nenhuma outra ordem já salva.
+  if(window.DriveSync) DriveSync.saveItem('Ordens de Servico', savedOrder.id, savedOrder);
 }
 function deleteOrder(){
-  orders = orders.filter(o=>o.id!==editingOrderId);
+  const idToDelete = editingOrderId;
+  orders = orders.filter(o=>o.id!==idToDelete);
   closeOrderModal();
   renderMonthView();
   renderTodayView();
   saveState();
+  if(window.DriveSync) DriveSync.deleteItem('Ordens de Servico', idToDelete);
 }
 document.getElementById('orderModalBg').addEventListener('click', (e)=>{
   if(e.target.id==='orderModalBg') closeOrderModal();
@@ -1516,6 +1569,10 @@ function importData(event){
       renderMonthView();
       renderTodayView();
       saveState();
+      // Garante que cada ordem restaurada também suba pro Drive como anotação própria.
+      if(window.DriveSync && data.orders){
+        orders.forEach(o => DriveSync.saveItem('Ordens de Servico', o.id, o));
+      }
       alert('Backup restaurado com sucesso.');
     }catch(err){
       alert('Não foi possível ler este arquivo. Verifique se é um backup exportado por este planejador.');
@@ -1553,8 +1610,12 @@ if(window.DriveSync){
       const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
       if(status === 'connected'){
         setDriveStatus('Conectado · sincronizando…');
-        DriveSync.loadJson('rotina-backup.json').then(cloud => {
+        Promise.all([
+          DriveSync.loadJson('rotina-backup.json'),
+          DriveSync.loadAllItems('Ordens de Servico')
+        ]).then(([cloud, cloudOrders]) => {
           if(cloud) applyCloudData(cloud); else saveState();
+          mergeOrdersFromCloud(cloudOrders);
           setDriveStatus('Sincronizado com o Drive · ' + now);
         }).catch((err) => setDriveStatus('Erro ao carregar do Drive: ' + (err && err.message ? err.message : 'desconhecido')));
       } else if(status === 'saved'){
