@@ -221,6 +221,16 @@
     font-family:'JetBrains Mono',monospace; font-size:0.72rem; font-weight:600;
     align-self:flex-end;
   }
+  .month-cell-head{
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .add-order-btn{
+    width:20px; height:20px; border-radius:50%; border:1px solid var(--paper-line);
+    background:#fff; color: var(--ink-soft); font-size:0.85rem; line-height:1;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    flex-shrink:0; padding:0;
+  }
+  .add-order-btn:hover{ background: var(--brass); border-color: var(--brass); color:#fff; }
   .order-chip{
     font-size:0.68rem; padding:2px 5px; border-radius:4px; color:#20221c;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1248,7 +1258,12 @@ function renderMonthView(){
 
     const cell = document.createElement('div');
     cell.className = 'month-cell' + (outside ? ' outside' : '') + (key===todayKey ? ' today' : '');
-    cell.innerHTML = `<div class="daynum">${d}</div>`;
+    cell.innerHTML = `
+      <div class="month-cell-head">
+        <span class="daynum">${d}</span>
+        <button class="add-order-btn" type="button" title="Nova ordem de serviço">+</button>
+      </div>`;
+    cell.querySelector('.add-order-btn').onclick = (e) => { e.stopPropagation(); openOrderModal(key, null); };
 
     const dayOrders = orders.filter(o=>o.date===key).sort((a,b)=> (a.start||'99:99').localeCompare(b.start||'99:99'));
     dayOrders.slice(0,4).forEach(o=>{
