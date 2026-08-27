@@ -231,6 +231,23 @@
     flex-shrink:0; padding:0;
   }
   .add-order-btn:hover{ background: var(--brass); border-color: var(--brass); color:#fff; }
+
+  .day-order-row{
+    display:flex; align-items:center; gap:10px;
+    background:#f8f5ec; border:1px solid var(--paper-line); border-radius:8px;
+    padding:9px 10px; cursor:pointer;
+  }
+  .day-order-row:hover{ border-color: var(--brass); }
+  .day-order-row.delivered{ opacity:0.6; }
+  .day-order-row .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .day-order-row .info{ flex:1; min-width:0; }
+  .day-order-row .info .t{ font-size:0.85rem; font-weight:600; }
+  .day-order-row.delivered .info .t{ text-decoration:line-through; }
+  .day-order-row .info .s{ font-size:0.72rem; color: var(--ink-soft); }
+  .day-order-row button{
+    background:none; border:none; color:#a39a89; cursor:pointer; font-size:1rem; padding:4px;
+  }
+  .day-order-row button:hover{ color: var(--danger); }
   .order-chip{
     font-size:0.68rem; padding:2px 5px; border-radius:4px; color:#20221c;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -667,6 +684,18 @@
         <button class="btn-delete" id="osDeleteBtn" onclick="deleteOrder()" style="display:none;">Excluir</button>
       </div>
       <button class="btn-save" onclick="saveOrder()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: TODAS AS ORDENS DO DIA -->
+<div class="modal-bg" id="dayModalBg">
+  <div class="modal" style="max-width:420px;">
+    <h3 id="dayModalTitle">Ordens do dia</h3>
+    <div id="dayModalList" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;margin-bottom:16px;"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeDayModal()">Fechar</button>
+      <button class="btn-save" id="dayModalAddBtn">+ Nova ordem</button>
     </div>
   </div>
 </div>
@@ -1264,6 +1293,8 @@ function renderMonthView(){
         <button class="add-order-btn" type="button" title="Nova ordem de serviço">+</button>
       </div>`;
     cell.querySelector('.add-order-btn').onclick = (e) => { e.stopPropagation(); openOrderModal(key, null); };
+    cell.querySelector('.daynum').style.cursor = 'pointer';
+    cell.querySelector('.daynum').onclick = (e) => { e.stopPropagation(); openDayModal(key); };
 
     const dayOrders = orders.filter(o=>o.date===key).sort((a,b)=> (a.start||'99:99').localeCompare(b.start||'99:99'));
     dayOrders.slice(0,4).forEach(o=>{
@@ -1278,11 +1309,14 @@ function renderMonthView(){
     if(dayOrders.length > 4){
       const more = document.createElement('div');
       more.className = 'order-more';
+      more.style.cursor = 'pointer';
+      more.style.textDecoration = 'underline';
       more.textContent = `+${dayOrders.length - 4} mais`;
+      more.onclick = (e) => { e.stopPropagation(); openDayModal(key); };
       cell.appendChild(more);
     }
 
-    cell.onclick = () => openOrderModal(key, null);
+    cell.onclick = () => openDayModal(key);
     grid.appendChild(cell);
   }
 }
@@ -1359,6 +1393,61 @@ function deleteOrder(){
 }
 document.getElementById('orderModalBg').addEventListener('click', (e)=>{
   if(e.target.id==='orderModalBg') closeOrderModal();
+});
+
+/* ---------------- MODAL: TODAS AS ORDENS DO DIA ---------------- */
+let currentDayModalKey = null;
+function openDayModal(dateKeyStr){
+  currentDayModalKey = dateKeyStr;
+  document.getElementById('dayModalTitle').textContent = 'Ordens de ' + formatDateBR(dateKeyStr);
+  document.getElementById('dayModalAddBtn').onclick = () => { closeDayModal(); openOrderModal(dateKeyStr, null); };
+  renderDayModalList();
+  document.getElementById('dayModalBg').classList.add('open');
+}
+function closeDayModal(){
+  document.getElementById('dayModalBg').classList.remove('open');
+  currentDayModalKey = null;
+}
+function renderDayModalList(){
+  const list = document.getElementById('dayModalList');
+  const dayOrders = orders.filter(o=>o.date===currentDayModalKey).sort((a,b)=> (a.start||'99:99').localeCompare(b.start||'99:99'));
+  if(!dayOrders.length){
+    list.innerHTML = '<div class="today-empty">Nenhuma ordem lançada neste dia ainda.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  dayOrders.forEach(o=>{
+    const cat = catById(o.catId) || {color:'#ccc'};
+    const row = document.createElement('div');
+    row.className = 'day-order-row' + (o.delivered ? ' delivered' : '');
+    row.innerHTML = `
+      <span class="dot" style="background:${cat.color}"></span>
+      <span class="info">
+        <div class="t">${o.delivered ? '✓ ' : ''}${escapeHtml(o.title)}${o.osNumber ? ' #'+escapeHtml(o.osNumber) : ''}</div>
+        <div class="s">${o.start ? o.start + (o.end ? '–'+o.end : '') + ' · ' : ''}${escapeHtml(o.team || '')}</div>
+      </span>
+      <button title="Excluir" data-del-id="${o.id}">✕</button>
+    `;
+    row.addEventListener('click', (e) => {
+      if(e.target.closest('button')) return;
+      closeDayModal();
+      openOrderModal(currentDayModalKey, o);
+    });
+    row.querySelector('button').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm('Excluir esta ordem de serviço?')) return;
+      orders = orders.filter(x=>x.id!==o.id);
+      renderMonthView();
+      renderTodayView();
+      saveState();
+      if(window.DriveSync) DriveSync.deleteItem('Ordens de Servico', o.id);
+      renderDayModalList();
+    });
+    list.appendChild(row);
+  });
+}
+document.getElementById('dayModalBg').addEventListener('click', (e)=>{
+  if(e.target.id==='dayModalBg') closeDayModal();
 });
 
 /* ---------------- HOJE ---------------- */
