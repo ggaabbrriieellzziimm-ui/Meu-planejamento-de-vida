@@ -276,6 +276,12 @@ function loadState(){
       parsed.months.forEach(m=>['income','fixed','variable'].forEach(c=>m[c].forEach(it=>{
         const n = parseInt((it.id||'i0').slice(1)); if(n>maxId) maxId = n;
       })));
+      if(parsed.settings && parsed.settings.cards) parsed.settings.cards.forEach(c=>{
+        const n = parseInt((c.id||'i0').slice(1)); if(n>maxId) maxId = n;
+      });
+      if(parsed.cardPurchases) parsed.cardPurchases.forEach(p=>{
+        const n = parseInt((p.id||'i0').slice(1)); if(n>maxId) maxId = n;
+      });
       uid = maxId+1;
       // compatibilidade com backups antigos sem "settings"
       if(!parsed.settings) parsed.settings = { cardCeiling:30, reserve:{ saldoAtual:0, metaMeses:6 }, cards:[] };
@@ -283,6 +289,13 @@ function loadState(){
       if(parsed.settings.cardCeiling==null) parsed.settings.cardCeiling = 30;
       if(!parsed.settings.cards) parsed.settings.cards = [];
       if(!parsed.cardPurchases) parsed.cardPurchases = [];
+      // Reparo automático: se dois cartões acabaram com o mesmo ID (bug de versões
+      // anteriores), dá um ID novo pros duplicados pra eles pararem de compartilhar gastos.
+      const seenCardIds = new Set();
+      parsed.settings.cards.forEach(c=>{
+        if(seenCardIds.has(c.id)){ c.id = newId(); }
+        seenCardIds.add(c.id);
+      });
       return parsed;
     }
   }catch(e){ console.warn('estado corrompido, recriando', e); }
