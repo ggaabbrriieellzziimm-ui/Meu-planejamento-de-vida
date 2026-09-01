@@ -19,15 +19,17 @@
     position:relative;
   }
 
-  /* botão de menu (canto) */
+  /* botão de menu (canto) — vidro fosco, fica visível em fundo escuro ou claro */
   .menu-toggle{
     position:fixed; top:20px; right:20px; z-index:20;
     width:46px; height:46px; border-radius:50%;
-    background: rgba(30,42,40,0.82);
-    border:none; color:#fff; font-size:1.4rem; line-height:1;
+    background: rgba(255,255,255,0.14);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border:1px solid rgba(255,255,255,0.45);
+    color:#fff; font-size:1.4rem; line-height:1;
     display:flex; align-items:center; justify-content:center;
     cursor:pointer; letter-spacing:2px;
-    box-shadow: 0 6px 18px -6px rgba(0,0,0,0.4);
+    box-shadow: 0 6px 18px -6px rgba(0,0,0,0.5);
   }
   .menu-toggle:active{ transform: scale(0.94); }
 
@@ -98,9 +100,17 @@
   .drawer-footer{
     margin-top:auto; font-size:0.66rem; color:#a39a89; line-height:1.5; padding-top:20px;
   }
+
+  /* céu interativo: passe o dedo pra revelar estrelas escondidas no escuro */
+  #skyCanvas{
+    position:fixed; top:0; left:0; width:100%; height:60%;
+    z-index:2; touch-action:none;
+  }
 </style>
 </head>
 <body>
+
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
 
   <button class="menu-toggle" id="menuToggle" aria-label="Abrir menu">⋮</button>
 
@@ -169,6 +179,112 @@
       navigator.serviceWorker.register('service-worker.js').catch(()=>{});
     });
   }
+
+  /* ---------------- CÉU INTERATIVO ---------------- */
+  (function(){
+    const canvas = document.getElementById('skyCanvas');
+    const ctx = canvas.getContext('2d');
+    let stars = [];
+    let starLayer = null;
+
+    const galaxies = [
+      { dx:0.18, dy:0.32, hue:265, r:85 },
+      { dx:0.78, dy:0.20, hue:200, r:70 },
+      { dx:0.50, dy:0.55, hue:320, r:75 },
+    ];
+
+    function rectSize(){
+      return { w: canvas.clientWidth, h: canvas.clientHeight };
+    }
+
+    function buildStarLayer(){
+      const { w, h } = rectSize();
+      const dpr = window.devicePixelRatio || 1;
+      starLayer = document.createElement('canvas');
+      starLayer.width = w * dpr;
+      starLayer.height = h * dpr;
+      const sctx = starLayer.getContext('2d');
+      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      galaxies.forEach(g => {
+        const gx = w * g.dx, gy = h * g.dy;
+        const grad = sctx.createRadialGradient(gx, gy, 0, gx, gy, g.r);
+        grad.addColorStop(0, `hsla(${g.hue},75%,68%,0.38)`);
+        grad.addColorStop(1, `hsla(${g.hue},75%,68%,0)`);
+        sctx.fillStyle = grad;
+        sctx.beginPath();
+        sctx.arc(gx, gy, g.r, 0, Math.PI * 2);
+        sctx.fill();
+      });
+
+      const count = Math.floor((w * h) / 3800);
+      stars = [];
+      for(let i = 0; i < count; i++){
+        stars.push({ x: Math.random()*w, y: Math.random()*h, r: Math.random()*1.3+0.3, a: Math.random()*0.6+0.35 });
+      }
+      stars.forEach(s => {
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(255,255,255,${s.a})`;
+        sctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+        sctx.fill();
+      });
+    }
+
+    function resize(){
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildStarLayer();
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    function reveal(x, y){
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, 42);
+      grad.addColorStop(0, 'rgba(0,0,0,0.9)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, 42, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function pointerPos(e){
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    let touching = false;
+    canvas.addEventListener('pointerdown', (e) => { touching = true; const p = pointerPos(e); reveal(p.x, p.y); });
+    canvas.addEventListener('pointermove', (e) => { if(!touching) return; const p = pointerPos(e); reveal(p.x, p.y); });
+    window.addEventListener('pointerup', () => { touching = false; });
+    window.addEventListener('pointercancel', () => { touching = false; });
+
+    function loop(){
+      const { w, h } = rectSize();
+      if(starLayer){
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.drawImage(starLayer, 0, 0, w, h);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(0,0,0,0.035)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+  })();
 </script>
 </body>
 </html>
