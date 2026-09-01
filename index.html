@@ -187,11 +187,7 @@
     let stars = [];
     let starLayer = null;
 
-    const galaxies = [
-      { dx:0.18, dy:0.32, hue:265, r:85 },
-      { dx:0.78, dy:0.20, hue:200, r:70 },
-      { dx:0.50, dy:0.55, hue:320, r:75 },
-    ];
+    function rand(min, max){ return Math.random() * (max - min) + min; }
 
     function rectSize(){
       return { w: canvas.clientWidth, h: canvas.clientHeight };
@@ -205,17 +201,6 @@
       starLayer.height = h * dpr;
       const sctx = starLayer.getContext('2d');
       sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      galaxies.forEach(g => {
-        const gx = w * g.dx, gy = h * g.dy;
-        const grad = sctx.createRadialGradient(gx, gy, 0, gx, gy, g.r);
-        grad.addColorStop(0, `hsla(${g.hue},75%,68%,0.38)`);
-        grad.addColorStop(1, `hsla(${g.hue},75%,68%,0)`);
-        sctx.fillStyle = grad;
-        sctx.beginPath();
-        sctx.arc(gx, gy, g.r, 0, Math.PI * 2);
-        sctx.fill();
-      });
 
       const count = Math.floor((w * h) / 3800);
       stars = [];
@@ -265,6 +250,54 @@
     window.addEventListener('pointerup', () => { touching = false; });
     window.addEventListener('pointercancel', () => { touching = false; });
 
+    /* estrelas cadentes: cruzam o céu sozinhas de vez em quando, tocando ou não */
+    let meteors = [];
+    let nextMeteorAt = performance.now() + rand(1200, 3500);
+
+    function spawnMeteor(){
+      const { w, h } = rectSize();
+      const startX = rand(w*0.15, w*0.85);
+      const startY = rand(0, h*0.18);
+      const angle = rand(35, 55) * Math.PI/180;
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const speed = rand(9, 14);
+      meteors.push({
+        x: startX, y: startY,
+        vx: Math.cos(angle)*speed*dir,
+        vy: Math.sin(angle)*speed,
+        life: 1,
+        trail: rand(70, 120)
+      });
+    }
+
+    function updateAndDrawMeteors(){
+      const { w, h } = rectSize();
+      meteors.forEach(m => { m.x += m.vx; m.y += m.vy; m.life -= 0.02; });
+      meteors = meteors.filter(m => m.life > 0 && m.y < h+50 && m.x > -50 && m.x < w+50);
+
+      meteors.forEach(m => {
+        const angle = Math.atan2(m.vy, m.vx);
+        const tailX = m.x - Math.cos(angle)*m.trail;
+        const tailY = m.y - Math.sin(angle)*m.trail;
+        const grad = ctx.createLinearGradient(m.x, m.y, tailX, tailY);
+        grad.addColorStop(0, `rgba(255,255,255,${0.9*m.life})`);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.save();
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(tailX, tailY);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255,255,255,${m.life})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, 1.6, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
     function loop(){
       const { w, h } = rectSize();
       if(starLayer){
@@ -278,6 +311,11 @@
       ctx.fillStyle = 'rgba(0,0,0,0.035)';
       ctx.fillRect(0, 0, w, h);
       ctx.restore();
+
+      const now = performance.now();
+      if(now > nextMeteorAt){ spawnMeteor(); nextMeteorAt = now + rand(3500, 8000); }
+      updateAndDrawMeteors();
+
       requestAnimationFrame(loop);
     }
 
