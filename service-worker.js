@@ -1,10 +1,11 @@
-const CACHE_NAME = 'meu-planejamento-v2';
+const CACHE_NAME = 'meu-planejamento-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './rotina.html',
   './financas.html',
   './treino.html',
+  './notas.html',
   './drive-sync.js',
   './manifest.json',
   './background-light.jpg',

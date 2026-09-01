@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notas</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#171C22">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#171C22;
+    --bg-2:#1F2630;
+    --line:#2c3542;
+    --paper:#FBF7EE;
+    --paper-line:#E7DFCC;
+    --ink:#232323;
+    --ink-soft:#6b6558;
+    --cream-text:#EDEFF2;
+    --accent:#5B8DEF;
+    --accent-soft:#8AAEF2;
+    --danger:#c8543f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;min-height:100%;}
+  body{
+    background: var(--bg);
+    font-family:'Inter',sans-serif;
+    color: var(--cream-text);
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+  }
+  h1,h2,h3{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px 20px 16px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg); z-index:5;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand .dot{
+    width:10px; height:10px; border-radius:50%; background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(91,141,239,0.18);
+  }
+  .brand h1{ font-size:1.25rem; margin:0; }
+  .menu-link{
+    font-size:0.75rem; color:#b9c3d1; text-decoration:none;
+    border:1px solid var(--line); padding:7px 12px; border-radius:8px;
+    background:none; cursor:pointer;
+  }
+  #driveStatus{ text-align:center; font-size:0.68rem; color:#8894a3; padding:6px 16px 0; }
+
+  .container{ max-width:640px; margin:0 auto; padding:18px 16px 10px; }
+
+  .toolbar{ display:flex; gap:8px; margin-bottom:16px; }
+  .toolbar input{
+    flex:1; padding:11px 14px; border-radius:10px; border:1px solid var(--line);
+    background: var(--bg-2); color:var(--cream-text); font-size:0.88rem;
+  }
+  .toolbar input::placeholder{ color:#6b7684; }
+  .add-btn{
+    background: var(--accent); color:#fff; border:none;
+    padding:11px 16px; border-radius:10px; font-weight:600; font-size:0.85rem;
+    cursor:pointer; white-space:nowrap;
+  }
+  .add-btn:active{ background: var(--accent-soft); }
+
+  .note-card{
+    background: var(--paper); color: var(--ink); border-radius:12px;
+    padding:14px 16px; margin-bottom:10px; cursor:pointer;
+    display:flex; align-items:flex-start; gap:10px;
+    border:1px solid transparent;
+  }
+  .note-card:active{ border-color: var(--accent); }
+  .note-card .body{ flex:1; min-width:0; }
+  .note-card .title{ font-weight:700; font-size:0.95rem; margin-bottom:3px; }
+  .note-card .title.empty{ color:var(--ink-soft); font-weight:500; font-style:italic; }
+  .note-card .preview{
+    font-size:0.8rem; color:var(--ink-soft); line-height:1.4;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .note-card .meta{ font-size:0.66rem; color:#a39a89; margin-top:6px; }
+  .note-card .del{
+    background:none; border:none; color:#c4bba9; font-size:1rem; cursor:pointer; padding:4px;
+    flex-shrink:0;
+  }
+  .note-card .del:hover{ color: var(--danger); }
+
+  .empty-state{ text-align:center; color:#8894a3; font-size:0.85rem; padding:50px 20px; }
+
+  /* editor */
+  #editView{ display:none; }
+  .editor-topbar{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .back-btn{
+    background:none; border:1px solid var(--line); color:var(--cream-text);
+    padding:8px 14px; border-radius:8px; font-size:0.82rem; cursor:pointer;
+  }
+  .del-note-btn{
+    background:none; border:1px solid #4a2e2a; color:#e28a7a;
+    padding:8px 14px; border-radius:8px; font-size:0.82rem; cursor:pointer;
+  }
+  #noteTitle{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line);
+    background: var(--bg-2); color:var(--cream-text); font-size:1.05rem; font-weight:600;
+    margin-bottom:10px; font-family:'Space Grotesk',sans-serif;
+  }
+  #noteTitle::placeholder{ color:#6b7684; }
+  #noteBody{
+    width:100%; min-height:55vh; padding:14px; border-radius:10px; border:1px solid var(--line);
+    background: var(--paper); color: var(--ink); font-size:0.92rem; line-height:1.6;
+    font-family:'Inter',sans-serif; resize:vertical;
+  }
+  #noteBody::placeholder{ color:#a39a89; }
+  #editStatus{ text-align:right; font-size:0.68rem; color:#8894a3; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>Notas</h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <button class="menu-link" id="driveBtn" onclick="DriveSync.connect()">☁ Drive</button>
+    <a href="index.html" class="menu-link">← Menu</a>
+  </div>
+</div>
+<div id="driveStatus"></div>
+
+<div class="container" id="listView">
+  <div class="toolbar">
+    <input id="searchInput" placeholder="Buscar nas notas..." oninput="renderList()">
+    <button class="add-btn" onclick="newNote()">+ Nova nota</button>
+  </div>
+  <div id="notesList"></div>
+</div>
+
+<div class="container" id="editView">
+  <div class="editor-topbar">
+    <button class="back-btn" onclick="closeEditor()">← Voltar</button>
+    <button class="del-note-btn" onclick="deleteCurrentNote()">Excluir nota</button>
+  </div>
+  <input id="noteTitle" placeholder="Título (opcional)">
+  <textarea id="noteBody" placeholder="Escreva aqui — sem limite de caracteres. Pode anotar textos, senhas, o que precisar."></textarea>
+  <div id="editStatus">Salva sozinho enquanto você digita.</div>
+</div>
+
+<script src="drive-sync.js"></script>
+<script>
+const STORAGE_KEY = 'minhas-notas-v1';
+let notes = [];
+let currentNoteId = null;
+let driveSaveTimer = null;
+
+function uid(){ return 'id' + Math.random().toString(36).slice(2,9); }
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+
+/* ---------------- PERSISTÊNCIA LOCAL ---------------- */
+function saveState(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)); }
+  catch(err){ console.error('Não foi possível salvar automaticamente:', err); }
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(Array.isArray(data)) notes = data;
+  }catch(err){ console.error('Não foi possível carregar o salvamento automático:', err); }
+}
+
+/* ---------------- SINCRONIA COM O DRIVE (uma nota = um arquivo próprio) ---------------- */
+function scheduleDriveSave(note){
+  clearTimeout(driveSaveTimer);
+  driveSaveTimer = setTimeout(() => {
+    if(window.DriveSync) DriveSync.saveItem('Notas', note.id, note);
+  }, 800);
+}
+function flushDriveSave(note){
+  clearTimeout(driveSaveTimer);
+  if(window.DriveSync && note) DriveSync.saveItem('Notas', note.id, note);
+}
+function mergeNotesFromCloud(cloudNotes){
+  if(!cloudNotes || !cloudNotes.length) return;
+  const localById = {};
+  notes.forEach(n => { localById[n.id] = n; });
+  let changed = false;
+
+  cloudNotes.forEach(cn => {
+    const ln = localById[cn.id];
+    if(!ln){
+      notes.push(cn);
+      changed = true;
+    } else {
+      const lt = ln.updatedAt || 0, ct = cn.updatedAt || 0;
+      if(ct > lt){
+        Object.assign(ln, cn);
+        changed = true;
+      } else if(lt > ct && window.DriveSync){
+        DriveSync.saveItem('Notas', ln.id, ln);
+      }
+    }
+  });
+
+  if(window.DriveSync){
+    notes.forEach(n => {
+      if(!cloudNotes.some(cn => cn.id === n.id)) DriveSync.saveItem('Notas', n.id, n);
+    });
+  }
+
+  if(changed){
+    saveState();
+    renderList();
+  }
+}
+
+/* ---------------- HELPERS ---------------- */
+function formatRelative(ts){
+  if(!ts) return '';
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff/60000);
+  if(min < 1) return 'agora mesmo';
+  if(min < 60) return `há ${min} min`;
+  const h = Math.floor(min/60);
+  if(h < 24) return `há ${h}h`;
+  const d = Math.floor(h/24);
+  if(d < 7) return `há ${d} dia${d>1?'s':''}`;
+  return new Date(ts).toLocaleDateString('pt-BR');
+}
+
+/* ---------------- LISTA ---------------- */
+function renderList(){
+  const list = document.getElementById('notesList');
+  const term = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+  let filtered = notes.slice().sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
+  if(term){
+    filtered = filtered.filter(n =>
+      (n.title||'').toLowerCase().includes(term) || (n.body||'').toLowerCase().includes(term)
+    );
+  }
+
+  if(!filtered.length){
+    list.innerHTML = `<div class="empty-state">${term ? 'Nenhuma nota encontrada.' : 'Nenhuma nota ainda. Toque em "+ Nova nota" pra começar.'}</div>`;
+    return;
+  }
+
+  list.innerHTML = '';
+  filtered.forEach(n => {
+    const preview = (n.body||'').replace(/\n+/g,' ').trim();
+    const card = document.createElement('div');
+    card.className = 'note-card';
+    card.innerHTML = `
+      <div class="body">
+        <div class="title ${n.title ? '' : 'empty'}">${n.title ? escapeHtml(n.title) : 'Sem título'}</div>
+        <div class="preview">${escapeHtml(preview) || '<em>Nota vazia</em>'}</div>
+        <div class="meta">${formatRelative(n.updatedAt)}</div>
+      </div>
+      <button class="del" title="Excluir" data-id="${n.id}">✕</button>
+    `;
+    card.addEventListener('click', (e) => {
+      if(e.target.closest('.del')) return;
+      openEditor(n.id);
+    });
+    card.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm('Excluir esta nota? Essa ação não pode ser desfeita.')) return;
+      notes = notes.filter(x => x.id !== n.id);
+      saveState();
+      if(window.DriveSync) DriveSync.deleteItem('Notas', n.id);
+      renderList();
+    });
+    list.appendChild(card);
+  });
+}
+
+/* ---------------- EDITOR ---------------- */
+function newNote(){
+  const note = { id: uid(), title:'', body:'', updatedAt: Date.now() };
+  notes.push(note);
+  saveState();
+  scheduleDriveSave(note);
+  openEditor(note.id);
+}
+function openEditor(id){
+  currentNoteId = id;
+  const note = notes.find(n => n.id === id);
+  if(!note) return;
+  document.getElementById('noteTitle').value = note.title || '';
+  document.getElementById('noteBody').value = note.body || '';
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('editView').style.display = 'block';
+  document.getElementById('editStatus').textContent = 'Salva sozinho enquanto você digita.';
+  setTimeout(() => document.getElementById('noteBody').focus(), 50);
+}
+function closeEditor(){
+  const note = notes.find(n => n.id === currentNoteId);
+  if(note) flushDriveSave(note);
+  currentNoteId = null;
+  document.getElementById('editView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+  renderList();
+}
+function onNoteEdited(){
+  const note = notes.find(n => n.id === currentNoteId);
+  if(!note) return;
+  note.title = document.getElementById('noteTitle').value;
+  note.body = document.getElementById('noteBody').value;
+  note.updatedAt = Date.now();
+  saveState();
+  scheduleDriveSave(note);
+  document.getElementById('editStatus').textContent = 'Salvando...';
+  clearTimeout(window._notaStatusTimer);
+  window._notaStatusTimer = setTimeout(() => {
+    document.getElementById('editStatus').textContent = 'Salvo · ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  }, 850);
+}
+document.getElementById('noteTitle').addEventListener('input', onNoteEdited);
+document.getElementById('noteBody').addEventListener('input', onNoteEdited);
+
+function deleteCurrentNote(){
+  if(!currentNoteId) return;
+  if(!confirm('Excluir esta nota? Essa ação não pode ser desfeita.')) return;
+  const id = currentNoteId;
+  notes = notes.filter(n => n.id !== id);
+  saveState();
+  if(window.DriveSync) DriveSync.deleteItem('Notas', id);
+  currentNoteId = null;
+  document.getElementById('editView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+  renderList();
+}
+
+/* ---------------- INIT ---------------- */
+loadState();
+renderList();
+
+if(window.DriveSync){
+  function setDriveStatus(text){ const el = document.getElementById('driveStatus'); if(el) el.textContent = text; }
+  if(!DriveSync.isConfigured()){
+    setDriveStatus('Drive: ainda não configurado.');
+  } else {
+    setDriveStatus('Drive: não conectado');
+    DriveSync.onStatus((status, detail) => {
+      const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+      if(status === 'connected'){
+        setDriveStatus('Drive: sincronizando…');
+        DriveSync.loadAllItems('Notas').then(cloudNotes => {
+          mergeNotesFromCloud(cloudNotes);
+          setDriveStatus('Drive: sincronizado · ' + now);
+        }).catch(() => setDriveStatus('Drive: erro ao carregar.'));
+      } else if(status === 'saved' || status === 'item-saved'){
+        setDriveStatus('Drive: sincronizado · ' + now);
+      } else if(status === 'disconnected'){
+        setDriveStatus('Drive: não conectado');
+      } else if(status === 'expired'){
+        setDriveStatus('Drive: sessão expirada, toque em ☁ Drive');
+      } else if(status === 'error'){
+        setDriveStatus('Drive: erro · ' + detail);
+      }
+    });
+    DriveSync.trySilent();
+  }
+}
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
