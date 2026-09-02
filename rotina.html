@@ -488,6 +488,7 @@
       <button class="tab-btn active" id="tabTodayBtn" onclick="switchView('today')">Hoje</button>
       <button class="tab-btn" id="tabWeekBtn" onclick="switchView('week')">Rotina semanal</button>
       <button class="tab-btn" id="tabOrdersBtn" onclick="switchView('orders')">Ordens de Serviço</button>
+      <button class="tab-btn" id="tabCommitBtn" onclick="switchView('commit')">Compromissos Mensais</button>
     </div>
 
     <div id="todayView">
@@ -576,6 +577,29 @@
 
       <div class="month-grid" id="monthWeekdays"></div>
       <div class="month-grid" id="monthGrid" style="margin-top:6px;"></div>
+    </div>
+
+    <div id="commitView" style="display:none;">
+      <div class="paper-header">
+        <div>
+          <h2>Compromissos Mensais</h2>
+          <div class="today-tag mono" id="commitMonthLabel"></div>
+        </div>
+        <div class="paper-actions">
+          <button onclick="window.print()">Imprimir</button>
+        </div>
+      </div>
+
+      <div class="month-header">
+        <button class="nav-arrow" onclick="changeCommitMonth(-1)" title="Mês anterior">‹</button>
+        <select id="commitMonthSelect" onchange="onCommitMonthYearChange()"></select>
+        <input type="number" id="commitYearInput" onchange="onCommitMonthYearChange()">
+        <button class="nav-arrow" onclick="changeCommitMonth(1)" title="Próximo mês">›</button>
+        <button class="btn-outline" onclick="goCommitToday()">Hoje</button>
+      </div>
+
+      <div class="month-grid" id="commitMonthWeekdays"></div>
+      <div class="month-grid" id="commitMonthGrid" style="margin-top:6px;"></div>
     </div>
   </div>
 
@@ -700,6 +724,58 @@
   </div>
 </div>
 
+<!-- MODAL: COMPROMISSO -->
+<div class="modal-bg" id="commitModalBg">
+  <div class="modal">
+    <h3 id="commitModalTitle">Novo compromisso</h3>
+    <div class="field">
+      <label>Compromisso</label>
+      <input type="text" id="commitTitle" placeholder="Ex: Consulta médica, Reunião...">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Data</label>
+        <input type="text" id="commitDate" placeholder="DD/MM/AAAA">
+      </div>
+      <div class="field">
+        <label>Início</label>
+        <input type="text" id="commitStart" placeholder="Opcional">
+      </div>
+      <div class="field">
+        <label>Fim</label>
+        <input type="text" id="commitEnd" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="field">
+      <label>Categoria</label>
+      <select id="commitCat"></select>
+    </div>
+    <div class="field">
+      <label>Observações</label>
+      <input type="text" id="commitNotes" placeholder="Opcional">
+    </div>
+    <div class="modal-actions">
+      <div class="left">
+        <button class="btn-cancel" onclick="closeCommitModal()">Cancelar</button>
+        <button class="btn-delete" id="commitDeleteBtn" onclick="deleteCommitment()" style="display:none;">Excluir</button>
+      </div>
+      <button class="btn-save" onclick="saveCommitment()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: TODOS OS COMPROMISSOS DO DIA -->
+<div class="modal-bg" id="commitDayModalBg">
+  <div class="modal" style="max-width:420px;">
+    <h3 id="commitDayModalTitle">Compromissos do dia</h3>
+    <div id="commitDayModalList" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;margin-bottom:16px;"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCommitDayModal()">Fechar</button>
+      <button class="btn-save" id="commitDayModalAddBtn">+ Novo compromisso</button>
+    </div>
+  </div>
+</div>
+
 <script src="drive-sync.js"></script>
 <script>
 /* ---------------- STATE (autosave via localStorage on this domain + Backup/Restaurar as segurança) ---------------- */
@@ -743,6 +819,7 @@ let tasks = [
 ];
 
 let orders = [];
+let commitments = [];
 
 let monthlyGoals = [
   {id:'g1', name:'Treinar', done:false},
@@ -771,18 +848,20 @@ const PRIORITY_ORDER = ['alta','media','baixa'];
 let editingBlocks = [];
 let editingEventId = null;
 let editingOrderId = null;
+let editingCommitmentId = null;
 let currentView = 'today';
 
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 let currentMonth, currentYear;
+let currentCommitMonth, currentCommitYear;
 
 /* ---------------- AUTOSAVE ---------------- */
 function saveState(){
   try{
-    const data = { categories, events, tasks, orders, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() };
+    const data = { categories, events, tasks, orders, commitments, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // "orders" não entra mais no arquivo único da nuvem — cada ordem de serviço
-    // sincroniza sozinha, como uma anotação independente (ver saveOrder/deleteOrder).
+    // "orders" e "commitments" não entram no arquivo único da nuvem — cada ordem/compromisso
+    // sincroniza sozinho, como uma anotação independente (ver saveOrder/saveCommitment).
     if(window.DriveSync) DriveSync.autoSave('rotina-backup.json', () => ({ categories, events, tasks, monthlyGoals, closingChecklist, todayChecks, _ts: Date.now() }));
   }catch(err){
     console.error('Não foi possível salvar automaticamente:', err);
@@ -863,6 +942,7 @@ function loadState(){
     if(data.events) events = data.events;
     if(data.tasks) tasks = data.tasks;
     if(data.orders) orders = data.orders;
+    if(data.commitments) commitments = data.commitments;
     if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
     if(data.closingChecklist) closingChecklist = data.closingChecklist;
     if(data.todayChecks) todayChecks = data.todayChecks;
@@ -899,10 +979,13 @@ function switchView(view){
   document.getElementById('todayView').style.display = view==='today' ? '' : 'none';
   document.getElementById('weekView').style.display = view==='week' ? '' : 'none';
   document.getElementById('ordersView').style.display = view==='orders' ? '' : 'none';
+  document.getElementById('commitView').style.display = view==='commit' ? '' : 'none';
   document.getElementById('tabTodayBtn').classList.toggle('active', view==='today');
   document.getElementById('tabWeekBtn').classList.toggle('active', view==='week');
   document.getElementById('tabOrdersBtn').classList.toggle('active', view==='orders');
+  document.getElementById('tabCommitBtn').classList.toggle('active', view==='commit');
   if(view==='orders') renderMonthView();
+  if(view==='commit') renderCommitMonthView();
   if(view==='today') renderTodayView();
 }
 
@@ -1450,6 +1533,262 @@ document.getElementById('dayModalBg').addEventListener('click', (e)=>{
   if(e.target.id==='dayModalBg') closeDayModal();
 });
 
+/* ================= COMPROMISSOS MENSAIS (mesmo padrão das Ordens de Serviço) ================= */
+function initCommitMonthControls(){
+  const sel = document.getElementById('commitMonthSelect');
+  sel.innerHTML = MONTHS.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+  const now = new Date();
+  currentCommitMonth = now.getMonth();
+  currentCommitYear = now.getFullYear();
+  sel.value = currentCommitMonth;
+  document.getElementById('commitYearInput').value = currentCommitYear;
+}
+function onCommitMonthYearChange(){
+  currentCommitMonth = Number(document.getElementById('commitMonthSelect').value);
+  const y = Number(document.getElementById('commitYearInput').value);
+  currentCommitYear = y || currentCommitYear;
+  renderCommitMonthView();
+}
+function changeCommitMonth(delta){
+  currentCommitMonth += delta;
+  if(currentCommitMonth < 0){ currentCommitMonth = 11; currentCommitYear--; }
+  if(currentCommitMonth > 11){ currentCommitMonth = 0; currentCommitYear++; }
+  document.getElementById('commitMonthSelect').value = currentCommitMonth;
+  document.getElementById('commitYearInput').value = currentCommitYear;
+  renderCommitMonthView();
+}
+function goCommitToday(){
+  const now = new Date();
+  currentCommitMonth = now.getMonth();
+  currentCommitYear = now.getFullYear();
+  document.getElementById('commitMonthSelect').value = currentCommitMonth;
+  document.getElementById('commitYearInput').value = currentCommitYear;
+  renderCommitMonthView();
+}
+
+function renderCommitMonthView(){
+  document.getElementById('commitMonthLabel').textContent = MONTHS[currentCommitMonth] + ' de ' + currentCommitYear;
+
+  const weekdaysEl = document.getElementById('commitMonthWeekdays');
+  weekdaysEl.innerHTML = DAYS.map(d=>`<div class="month-weekday">${d}</div>`).join('');
+
+  const grid = document.getElementById('commitMonthGrid');
+  grid.innerHTML = '';
+
+  const firstDay = new Date(currentCommitYear, currentCommitMonth, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(currentCommitYear, currentCommitMonth+1, 0).getDate();
+  const daysInPrevMonth = new Date(currentCommitYear, currentCommitMonth, 0).getDate();
+  const now = new Date();
+  const todayKey = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const totalCells = Math.ceil((startOffset + daysInMonth)/7) * 7;
+
+  for(let i=0; i<totalCells; i++){
+    const dayNum = i - startOffset + 1;
+    let y, m, d, outside = false;
+    if(dayNum < 1){
+      m = currentCommitMonth===0 ? 11 : currentCommitMonth-1;
+      y = currentCommitMonth===0 ? currentCommitYear-1 : currentCommitYear;
+      d = daysInPrevMonth + dayNum;
+      outside = true;
+    } else if(dayNum > daysInMonth){
+      m = currentCommitMonth===11 ? 0 : currentCommitMonth+1;
+      y = currentCommitMonth===11 ? currentCommitYear+1 : currentCommitYear;
+      d = dayNum - daysInMonth;
+      outside = true;
+    } else {
+      y = currentCommitYear; m = currentCommitMonth; d = dayNum;
+    }
+    const key = dateKey(y, m, d);
+
+    const cell = document.createElement('div');
+    cell.className = 'month-cell' + (outside ? ' outside' : '') + (key===todayKey ? ' today' : '');
+    cell.innerHTML = `
+      <div class="month-cell-head">
+        <span class="daynum">${d}</span>
+        <button class="add-order-btn" type="button" title="Novo compromisso">+</button>
+      </div>`;
+    cell.querySelector('.add-order-btn').onclick = (e) => { e.stopPropagation(); openCommitModal(key, null); };
+    cell.querySelector('.daynum').style.cursor = 'pointer';
+    cell.querySelector('.daynum').onclick = (e) => { e.stopPropagation(); openCommitDayModal(key); };
+
+    const dayCommits = commitments.filter(c=>c.date===key).sort((a,b)=> (a.start||'99:99').localeCompare(b.start||'99:99'));
+    dayCommits.slice(0,4).forEach(c=>{
+      const cat = catById(c.catId) || {color:'#ccc'};
+      const chip = document.createElement('div');
+      chip.className = 'order-chip';
+      chip.style.background = cat.color + 'cc';
+      chip.textContent = (c.start ? c.start + ' · ' : '') + c.title;
+      chip.onclick = (e) => { e.stopPropagation(); openCommitModal(key, c); };
+      cell.appendChild(chip);
+    });
+    if(dayCommits.length > 4){
+      const more = document.createElement('div');
+      more.className = 'order-more';
+      more.style.cursor = 'pointer';
+      more.style.textDecoration = 'underline';
+      more.textContent = `+${dayCommits.length - 4} mais`;
+      more.onclick = (e) => { e.stopPropagation(); openCommitDayModal(key); };
+      cell.appendChild(more);
+    }
+
+    cell.onclick = () => openCommitDayModal(key);
+    grid.appendChild(cell);
+  }
+}
+
+function openCommitModal(dateKeyStr, commitment){
+  editingCommitmentId = commitment ? commitment.id : null;
+  document.getElementById('commitModalTitle').textContent = commitment ? 'Editar compromisso' : 'Novo compromisso';
+  document.getElementById('commitDeleteBtn').style.display = commitment ? 'inline' : 'none';
+
+  const catSel = document.getElementById('commitCat');
+  catSel.innerHTML = categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+
+  document.getElementById('commitTitle').value = commitment ? commitment.title : '';
+  document.getElementById('commitDate').value = formatDateBR(dateKeyStr);
+  document.getElementById('commitStart').value = commitment ? (commitment.start||'') : '';
+  document.getElementById('commitEnd').value = commitment ? (commitment.end||'') : '';
+  document.getElementById('commitCat').value = commitment ? commitment.catId : (categories[0] ? categories[0].id : '');
+  document.getElementById('commitNotes').value = commitment ? (commitment.notes||'') : '';
+
+  document.getElementById('commitModalBg').classList.add('open');
+}
+function closeCommitModal(){
+  document.getElementById('commitModalBg').classList.remove('open');
+  editingCommitmentId = null;
+}
+function saveCommitment(){
+  const title = document.getElementById('commitTitle').value.trim();
+  const dateStr = document.getElementById('commitDate').value.trim();
+  const start = document.getElementById('commitStart').value.trim();
+  const end = document.getElementById('commitEnd').value.trim();
+  const catId = document.getElementById('commitCat').value;
+  const notes = document.getElementById('commitNotes').value.trim();
+
+  if(!title){ alert('Dê um nome para o compromisso.'); return; }
+  const key = parseDateBR(dateStr);
+  if(!key){ alert('Use o formato DD/MM/AAAA para a data, ex: 23/08/2026'); return; }
+  if(start && !validTime(start)){ alert('Use o formato HH:MM para o início, ex: 09:30'); return; }
+  if(end && !validTime(end)){ alert('Use o formato HH:MM para o fim, ex: 11:00'); return; }
+  if(start && end && timeToMin(end) <= timeToMin(start)){ alert('O horário final precisa ser depois do inicial.'); return; }
+
+  let saved;
+  if(editingCommitmentId){
+    const c = commitments.find(c=>c.id===editingCommitmentId);
+    Object.assign(c, {title, date:key, start, end, catId, notes, _ts: Date.now()});
+    saved = c;
+  } else {
+    saved = {id: uid(), title, date:key, start, end, catId, notes, _ts: Date.now()};
+    commitments.push(saved);
+  }
+  closeCommitModal();
+  renderCommitMonthView();
+  saveState();
+  // Cada compromisso é seu próprio arquivo no Drive — anotar este nunca toca em nenhum outro já salvo.
+  if(window.DriveSync) DriveSync.saveItem('Compromissos', saved.id, saved);
+}
+function deleteCommitment(){
+  const idToDelete = editingCommitmentId;
+  commitments = commitments.filter(c=>c.id!==idToDelete);
+  closeCommitModal();
+  renderCommitMonthView();
+  saveState();
+  if(window.DriveSync) DriveSync.deleteItem('Compromissos', idToDelete);
+}
+document.getElementById('commitModalBg').addEventListener('click', (e)=>{
+  if(e.target.id==='commitModalBg') closeCommitModal();
+});
+
+/* ---------------- MODAL: TODOS OS COMPROMISSOS DO DIA ---------------- */
+let currentCommitDayModalKey = null;
+function openCommitDayModal(dateKeyStr){
+  currentCommitDayModalKey = dateKeyStr;
+  document.getElementById('commitDayModalTitle').textContent = 'Compromissos de ' + formatDateBR(dateKeyStr);
+  document.getElementById('commitDayModalAddBtn').onclick = () => { closeCommitDayModal(); openCommitModal(dateKeyStr, null); };
+  renderCommitDayModalList();
+  document.getElementById('commitDayModalBg').classList.add('open');
+}
+function closeCommitDayModal(){
+  document.getElementById('commitDayModalBg').classList.remove('open');
+  currentCommitDayModalKey = null;
+}
+function renderCommitDayModalList(){
+  const list = document.getElementById('commitDayModalList');
+  const dayCommits = commitments.filter(c=>c.date===currentCommitDayModalKey).sort((a,b)=> (a.start||'99:99').localeCompare(b.start||'99:99'));
+  if(!dayCommits.length){
+    list.innerHTML = '<div class="today-empty">Nenhum compromisso lançado neste dia ainda.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  dayCommits.forEach(c=>{
+    const cat = catById(c.catId) || {color:'#ccc'};
+    const row = document.createElement('div');
+    row.className = 'day-order-row';
+    row.innerHTML = `
+      <span class="dot" style="background:${cat.color}"></span>
+      <span class="info">
+        <div class="t">${escapeHtml(c.title)}</div>
+        <div class="s">${c.start ? c.start + (c.end ? '–'+c.end : '') : ''}${c.notes ? (c.start?' · ':'') + escapeHtml(c.notes) : ''}</div>
+      </span>
+      <button title="Excluir" data-del-id="${c.id}">✕</button>
+    `;
+    row.addEventListener('click', (e) => {
+      if(e.target.closest('button')) return;
+      closeCommitDayModal();
+      openCommitModal(currentCommitDayModalKey, c);
+    });
+    row.querySelector('button').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if(!confirm('Excluir este compromisso?')) return;
+      commitments = commitments.filter(x=>x.id!==c.id);
+      renderCommitMonthView();
+      saveState();
+      if(window.DriveSync) DriveSync.deleteItem('Compromissos', c.id);
+      renderCommitDayModalList();
+    });
+    list.appendChild(row);
+  });
+}
+document.getElementById('commitDayModalBg').addEventListener('click', (e)=>{
+  if(e.target.id==='commitDayModalBg') closeCommitDayModal();
+});
+
+/* mescla compromissos vindos da nuvem sem nunca apagar nada local */
+function mergeCommitmentsFromCloud(cloudCommitments){
+  if(!cloudCommitments || !cloudCommitments.length) return;
+  const localById = {};
+  commitments.forEach(c => { localById[c.id] = c; });
+  let changed = false;
+
+  cloudCommitments.forEach(cc => {
+    const lc = localById[cc.id];
+    if(!lc){
+      commitments.push(cc);
+      changed = true;
+    } else {
+      const lt = lc._ts || 0, ct = cc._ts || 0;
+      if(ct > lt){
+        Object.assign(lc, cc);
+        changed = true;
+      } else if(lt > ct && window.DriveSync){
+        DriveSync.saveItem('Compromissos', lc.id, lc);
+      }
+    }
+  });
+
+  if(window.DriveSync){
+    commitments.forEach(c => {
+      if(!cloudCommitments.some(cc => cc.id === c.id)) DriveSync.saveItem('Compromissos', c.id, c);
+    });
+  }
+
+  if(changed){
+    saveState();
+    renderCommitMonthView();
+  }
+}
+
 /* ---------------- HOJE ---------------- */
 function getTodayAgendaItems(){
   const items = [];
@@ -1664,6 +2003,7 @@ function importData(event){
       if(data.events) events = data.events;
       if(data.tasks) tasks = data.tasks;
       if(data.orders) orders = data.orders;
+      if(data.commitments) commitments = data.commitments;
       if(data.monthlyGoals) monthlyGoals = data.monthlyGoals;
       if(data.closingChecklist) closingChecklist = data.closingChecklist;
       renderCategories();
@@ -1671,11 +2011,15 @@ function importData(event){
       buildGridSkeleton();
       renderWorkload();
       renderMonthView();
+      renderCommitMonthView();
       renderTodayView();
       saveState();
-      // Garante que cada ordem restaurada também suba pro Drive como anotação própria.
+      // Garante que cada ordem/compromisso restaurado também suba pro Drive como anotação própria.
       if(window.DriveSync && data.orders){
         orders.forEach(o => DriveSync.saveItem('Ordens de Servico', o.id, o));
+      }
+      if(window.DriveSync && data.commitments){
+        commitments.forEach(c => DriveSync.saveItem('Compromissos', c.id, c));
       }
       alert('Backup restaurado com sucesso.');
     }catch(err){
@@ -1701,6 +2045,8 @@ renderWorkload();
 updateTodayTag();
 initMonthControls();
 renderMonthView();
+initCommitMonthControls();
+renderCommitMonthView();
 renderTodayView();
 
 if(window.DriveSync){
@@ -1716,10 +2062,12 @@ if(window.DriveSync){
         setDriveStatus('Conectado · sincronizando…');
         Promise.all([
           DriveSync.loadJson('rotina-backup.json'),
-          DriveSync.loadAllItems('Ordens de Servico')
-        ]).then(([cloud, cloudOrders]) => {
+          DriveSync.loadAllItems('Ordens de Servico'),
+          DriveSync.loadAllItems('Compromissos')
+        ]).then(([cloud, cloudOrders, cloudCommitments]) => {
           if(cloud) applyCloudData(cloud); else saveState();
           mergeOrdersFromCloud(cloudOrders);
+          mergeCommitmentsFromCloud(cloudCommitments);
           setDriveStatus('Sincronizado com o Drive · ' + now);
         }).catch((err) => setDriveStatus('Erro ao carregar do Drive: ' + (err && err.message ? err.message : 'desconhecido')));
       } else if(status === 'saved'){
